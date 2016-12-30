@@ -1,0 +1,31 @@
+# vim:filetype=make
+OCAMLC     = @OCAMLFIND@ ocamlc
+OCAMLOPT   = @OCAMLFIND@ ocamlopt
+OCAMLDEP   = @OCAMLFIND@ ocamldep
+OCAMLDOC   = @OCAMLFIND@ ocamldoc -html -colorize-code -all-params
+OCAMLMKTOP = @OCAMLFIND@ ocamlmktop -g
+DOCDIR    ?= doc/
+WARNS      = Ael-31-41-44-45
+override OCAMLOPTFLAGS += $(INCS) -w $(WARNS) -g -annot -I $(top_srcdir)
+override OCAMLFLAGS    += $(INCS) -w $(WARNS) -g -annot -I $(top_srcdir)
+
+top_build_prefix = @top_build_prefix@
+top_builddir = @top_builddir@
+
+# Common rules
+.SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot
+
+%.annot: %.ml
+	$(OCAMLC) $(SYNTAX) -package "$(REQUIRES)" $(OCAMLFLAGS) -c $<
+
+%.cmo: %.ml
+	$(OCAMLC) $(SYNTAX) -package "$(REQUIRES)" $(OCAMLFLAGS) -c $<
+
+%.cmi: %.mli
+	$(OCAMLC) $(SYNTAX) -package "$(REQUIRES)" $(OCAMLFLAGS) -c $<
+
+%.cmx: %.ml
+	$(OCAMLOPT) $(SYNTAX) -package "$(REQUIRES)" $(OCAMLOPTFLAGS) -c $<
+
+%.cmxs: %.ml
+	$(OCAMLOPT) $(SYNTAX) -package "$(REQUIRES)" $(OCAMLOPTFLAGS) -o $@ -shared $<

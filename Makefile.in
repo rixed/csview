@@ -1,0 +1,53 @@
+# vim:filetype=make
+top_srcdir = @top_srcdir@
+PKG_NAME = csview
+
+CSVIEW_SOURCES = csview.ml
+
+LOADTESTER_SOURCES = csview_loadtester.ml
+
+SOURCES = $(CSVIEW_SOURCES) $(LOADTESTER_SOURCES)
+
+REQUIRES = batteries net_codecs parsercombinator
+
+all: csview csview_loadtester.opt
+
+include $(top_srcdir)/make.common
+
+csview.opt: csview.cmx
+	$(OCAMLOPT) -o $@ -package "$(REQUIRES)" -linkpkg $(OCAMLOPTFLAGS) $^
+csview_loadtester.opt: csview_loadtester.cmx
+	$(OCAMLOPT) -o $@ -package "$(REQUIRES)" -linkpkg $(OCAMLOPTFLAGS) $^
+
+csview: csview.opt
+	@$(RM) $@ && cp -l $< $@
+
+clean:
+	$(RM) *.cm[ioxa] *.cmxa *.cmxs *.a *.s *.o test.* .depend *.annot *.opt
+
+distclean: clean
+	$(RM) *.byte *.opt
+
+clear:
+	sed -i.bak -e 's/[ 	]\+$$//' $(wildcard *.adoc)
+
+install: csview
+	install -D $(DESTDIR)$(prefix)/bin
+	install csview $(DESTDIR)$(prefix)/bin
+
+uninstall:
+	echo TODO
+	false
+
+reinstall: uninstall install
+
+# Dependencies
+
+dep:
+	$(RM) .depend
+	$(MAKE) .depend
+
+.depend: $(SOURCES)
+	$(OCAMLDEP) -package "$(REQUIRES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > $@
+
+-include .depend

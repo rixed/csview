@@ -1,0 +1,61 @@
+= CSVIEW
+
+Simple, convenient, pretty, fast: pick all!
+
+Command line: `csview file1 file2 file3` will start an HTTP server on some port
+and open a browser to this page, that will display the CSV files.
+
+== CSV
+
+Structure can be given as options. By default the first field will be assumed
+to be the X axis, and the plot type will be a time graph.  In this mode the X
+axis column must be ascending (because +csview+ does not sort the file and
+reads only a window of it).
+
+A tmpdir is used to store aggregated views (can be either saved for future
+reuse or deleted at exit).
+
+== URL
+
+=== http://localhost:$port/view
+
+Parameters:
+- file=name1,name2,... or all by default;
+- start=time or minimum of all files by default;
+- stop=time or maximum of all files by default;
+
+
+== Design
+
+The backend generates the SVG directly. Everything else but that SVG is static
+content (that's served from some files for easy customization). Therefore, we
+do not really need a lot of javascript, and js_of_ocaml might not even required.
+Unless we add a lot of interactions with the graph, but so far we need:
+
+- scroll
+- zoom
+- pointed values
+
+=== Plan A: Eliom
+
+Pros:
+- Once the first version is done it's easier to grow into a more complex app
+  (add graph types, add filters, etc);
+- First grade web server;
+
+Cons:
+- It's bloated: Hard to install, to compile, it's slower, and it will make
+  simple things harder.
+
+=== Plan B: Custom HTTP server, minimal JS.
+
+Pros:
+- Lean, fast, simple to customize;
+
+Cons:
+- Have to build an HTTP server - quite easy, but some decoders maybe;
+
+Still, +tyxml+ can help to build statically correct HTML _and_SVG_. If
+too cumbersome, we can use +owww+.
+
+
