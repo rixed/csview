@@ -27,16 +27,20 @@ let single_http_msg port = CodecHttp.(Msg.{
 let () =
   ignore Sys.(signal sigpipe Signal_ignore) ;
   let open Unix in
-  let port = 28019 in (* TODO cmd line me please *)
+  let port = ref 28019 in (* TODO cmd line me please *)
+  let n = ref 1000 in
   let domain = PF_INET in (* TODO: cmdline me please *)
-  let addr = ADDR_INET (inet_addr_of_string "127.0.0.1", port) in
+  let addr = ADDR_INET (inet_addr_of_string "127.0.0.1", !port) in
   let s = socket domain SOCK_STREAM 0 in
-  let n = 1000 in
-  let str = CodecHttp.Msg.encode (single_http_msg port) in
+  Arg.(parse [
+    "-n", Set_int n, "number of queries to send" ;
+    "-port", Set_int port, "destination port" ;
+  ] (fun s -> raise (Bad s)) "csview_loadtester.opt: load test csview") ;
+  let str = CodecHttp.Msg.encode (single_http_msg !port) in
   let len = String.length str in
   connect s addr ;
   let rec loop stream i =
-    if i >= n then (
+    if i >= !n then (
       Printf.printf "Done writing %d msgs\n%!" i ;
       i
     ) else (

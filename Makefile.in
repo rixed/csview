@@ -2,28 +2,29 @@
 top_srcdir = @top_srcdir@
 PKG_NAME = csview
 
-CSVIEW_SOURCES = csview.ml
+CSVIEW_SOURCES = \
+	color.ml chart.ml read_csv.ml csview.ml
 
 LOADTESTER_SOURCES = csview_loadtester.ml
 
 SOURCES = $(CSVIEW_SOURCES) $(LOADTESTER_SOURCES)
 
-REQUIRES = batteries net_codecs parsercombinator
+REQUIRES = batteries net_codecs parsercombinator cmdliner owww
 
 all: csview csview_loadtester.opt
 
 include $(top_srcdir)/make.common
 
-csview.opt: csview.cmx
+csview.opt: $(patsubst %.ml,%.cmx,$(CSVIEW_SOURCES))
 	$(OCAMLOPT) -o $@ -package "$(REQUIRES)" -linkpkg $(OCAMLOPTFLAGS) $^
 csview_loadtester.opt: csview_loadtester.cmx
 	$(OCAMLOPT) -o $@ -package "$(REQUIRES)" -linkpkg $(OCAMLOPTFLAGS) $^
 
 csview: csview.opt
-	@$(RM) $@ && cp -l $< $@
+	@$(RM) $@ && ln -f $< $@
 
 clean:
-	$(RM) *.cm[ioxa] *.cmxa *.cmxs *.a *.s *.o test.* .depend *.annot *.opt
+	$(RM) *.cm[ioxa] *.cmxa *.cmxs *.a *.s *.o test.* .depend *.annot *.opt all_tests.ml
 
 distclean: clean
 	$(RM) *.byte *.opt
@@ -40,6 +41,17 @@ uninstall:
 	false
 
 reinstall: uninstall install
+
+# Tests
+
+all_tests.ml: TestEnv.ml read_csv.ml #$(SOURCES)
+	$(QTEST) --shuffle --preamble 'open Batteries;; open TestEnv' -o $@ extract $^
+
+all_tests.opt: TestEnv.cmx read_csv.cmx all_tests.ml
+	$(OCAMLOPT) -o $@ $(SYNTAX) -package "$(REQUIRES) qcheck" -linkpkg $(OCAMLOPTFLAGS) $^
+
+check: all_tests.opt
+	./all_tests.opt || echo "FAILURE"
 
 # Dependencies
 

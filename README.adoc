@@ -23,7 +23,7 @@ Parameters:
 - file=name1,name2,... or all by default;
 - start=time or minimum of all files by default;
 - stop=time or maximum of all files by default;
-
+- n=nb points
 
 == Design
 
@@ -49,6 +49,9 @@ Cons:
 
 === Plan B: Custom HTTP server, minimal JS.
 
+Update: Done that! not particularly fast BTW, but contributed 2 useful libs
+(parsercombinator and net_codecs).
+
 Pros:
 - Lean, fast, simple to customize;
 
@@ -57,5 +60,26 @@ Cons:
 
 Still, +tyxml+ can help to build statically correct HTML _and_SVG_. If
 too cumbersome, we can use +owww+.
+
+
+== Timeline
+
+On csview:
+
+1. parsing the query: 5ms
+2. reading the CSV:
+3. computing the SVG:
+4. writing the SVG:
+
+On the browser:
+
+1. reading the SVG:
+2. rendering the SVG:
+
+== Command line
+
+options to consider:
+
+--no-open: to avoid opening the browser automatically
 
 

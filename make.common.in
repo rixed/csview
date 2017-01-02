@@ -4,6 +4,7 @@ OCAMLOPT   = @OCAMLFIND@ ocamlopt
 OCAMLDEP   = @OCAMLFIND@ ocamldep
 OCAMLDOC   = @OCAMLFIND@ ocamldoc -html -colorize-code -all-params
 OCAMLMKTOP = @OCAMLFIND@ ocamlmktop -g
+QTEST      = qtest
 DOCDIR    ?= doc/
 WARNS      = Ael-31-41-44-45
 override OCAMLOPTFLAGS += $(INCS) -w $(WARNS) -g -annot -I $(top_srcdir)
