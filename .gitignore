@@ -14,5 +14,6 @@ make.common
 *.cma
 *.cmxa
 *.opt
+*.csv
 csview
 all_tests.*

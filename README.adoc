@@ -15,6 +15,48 @@ reads only a window of it).
 A tmpdir is used to store aggregated views (can be either saved for future
 reuse or deleted at exit).
 
+We need to be able to quickly scan the CSV, aka to read arrays of floats
+(unboxed in ocaml) from a csv file. We have two kind of reads:
+
+1. Block reads, when we will keep most of the values we read ; for which we
+just need to quickly locate the starting time t1. This poses no particular
+difficulty.
+
+2. Sparse reads, when most of the values will not be read ; the idea that we
+should read everything regardless just to compute on the fly the min/max/avg
+etc is wrong: shall we want to display those then another CSV, pre-aggregated,
+should be provided. Hum, but then the idea of a sparse read is wrong as well:
+the CSV should be pre-aggregated!
+
+Let's first imagine we really want to plot only 100 points at regular time
+interval from a file of 1M points. Basically we will poke in the file looking
+for the timestamps that we want, using the index we have. That's 100 syncs.
+
+A quick measurement shows that it takes ~0.2ms to seek randomly in a huge file
+on the SSD of my macbook. to get 100 points with a perfect index would therefore
+require 20ms which is still acceptable. We need this perfect index though.
+
+What's a perfect index?
+
+- it's small enough that it fits in csview memory (it's flushed on disk at exit
+  unless instructed otherwise).
+- It can grow as we explore more of the file
+- We can very quickly know where it's useful to grow it (ie. if we know the
+  offset of a timestamp we can quickly learn what's the closest timestamps we
+  already know, and how far they are in the file)
+- As more useful information is added we can remove the less useful entries.
+
+Useful has two possible definitions: good coverage of the file, or close to
+what we used to ask.
+
+For a start, a mere binary tree (as in +Set+ of timestamp * offset) would be
+good enough.
+
+From the index we also learn the local average size of a tuple, allowing to
+bisect quicker to finally find the page we want. (note: we read the file by
+"page", in order to increase the chance that the desired timestamp is in
+there).
+
 == URL
 
 === http://localhost:$port/view
@@ -78,8 +120,38 @@ On the browser:
 
 == Command line
 
-options to consider:
+cmdliner is not a good fit since this is not a multi-command program. Arg.parse
+should be simpler overall.
 
---no-open: to avoid opening the browser automatically
+Scope of the options: per file (change only the settings for the files given
+after), per graph or global.
 
+- +--separator+: a char (default: auto!)
+- +--x+: index
+- +--title+: also set the name of the graph config, so more important than it
+  seems;
+- +--to-float+ followed by an index and the name of a formatter
+  (string->float);
+- +--y1+, +--y2+ list of indices for values to report on the left and right
+  axis;
+- +--to-string+ followed by an index and the name of a labeler (float->string),
+  used for ticks and legends;
+- +--x-label+, +--y1-label+, +--y2-label+ for the axis;
+- +--y1-stacked+, +--y2-stacked+: booleans;
+- +--annot+ or +--y3+: index of a field to use for annotations - values are
+  supposed to be strings already suitable for display;
+- +--color+, +--width+, +--filled+, +--opacity+: index and name of a color,
+  boolean or float;
+
+- +--config+, name of the directory to save/read configuration to/from (one per
+  file for the file related settings and one per graph for the graph settings -
+  which include the name of the file to use for that graph, and one global file
+  for global settings such as the open-with below).
+
+- +--no-browser+: to avoid opening the browser automatically
+- +--open-with+: how exactly to launch the browser?
+
+Filters: a way to say when to consider a y value depending on other fields.
+Very complex and doable on the CSV directly. Also, would likely disprove the
+assumption that a CSV line can be read from any block.
 

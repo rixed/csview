@@ -38,7 +38,7 @@ let http_msg_of_html ?(content_type="text/html") html =
       msg = "Okay" } ;
     headers = [
       "Content-Length", String.length body |> string_of_int ;
-      "Content-Type", "text/html" ;
+      "Content-Type", content_type ;
     ] ;
     body })
 
@@ -70,35 +70,47 @@ let http_msg_of_file fname =
     body })
 
 let get_graph oc params =
+  let open Config in
   let get n = CodecUrl.get_single_query_param params n in
-  let to_opt f = try Some (f ()) with Not_found -> None in
   let default v f = try f () with Not_found -> v in
-  let file = get "file" in
-  let t1 = (to_opt (fun () -> get "t1" |> float_of_string) |?
-            Read_csv.oldest file)
-  and t2 = (to_opt (fun () -> get "t2" |> float_of_string) |?
-            Read_csv.latest file)
+  let gi = get "gi" |> int_of_string in
+  let g = !graphs.(gi) in
+  let t1 = default g.files.(0).first_x (fun () -> get "t1" |> float_of_string)
+  and t2 = default g.files.(0).last_x (fun () -> get "t2" |> float_of_string)
   and n = default 100 (fun () -> get "n" |> int_of_string)
   in
-  let g = Read_csv.get_graph file t1 t2 n in
+  Printf.eprintf "Reading data\n" ;
+  (* TODO: fold the SVG for all files fi *)
+  let f_idx = 0 in
+  let file = g.files.(f_idx) in
+  let data = Read_csv.read_all file.fd file.x_field.index file.separator file.x_field.to_value file.block_size file.size n t1 t2 in
+  (* data is an array of n data points (or less), where each data point is:
+     ts : float * line : string *)
   (* Let's forget about what we asked and use the actual number instead: *)
-  let n = Array.length g.Read_csv.ts in
-  Printf.eprintf "Computing SVG\n%!" ;
+  let n = Array.length data in
+  Printf.eprintf "Computing SVG\n" ;
   (* The fold function is supposed to accumulate over all datasets *)
   let fold = { Chart.fold = fun f init ->
-    List.fold_left (fun prev d ->
-      (* We must pass a getter to f *)
-      let get i =
-        Printf.eprintf "%d->%f\n%!" i d.(i) ;
-        d.(i) in
-      f prev file true (* on the left Y-axis *) get)
-      init g.Read_csv.ds } in
+    let field_getter field i =
+      let _, line = data.(i) in
+      let y, _ = Read_csv.extract_field line file.separator 0 field.index field.to_value in
+      Printf.eprintf "%d->%f\n" i y ;
+      y in
+    let init' = Array.fold_left (fun prev field ->
+      f prev field.label true (* left Y-axis *) (field_getter field))
+      init file.y1_fields in
+    Array.fold_left (fun prev field ->
+      f prev field.label false (* right Y-axis *) (field_getter field))
+      init' file.y2_fields
+    (* TODO: the annotations *)
+    } in
+  (* TODO: add other files to this SVG, without the axis *)
   let vx_step = (t2-.t1) /. float_of_int (n-1) in
   let svg = Chart.xy_plot "time" "value" t1 vx_step n fold in
   let msg = http_msg_of_svg svg in
   respond oc msg
 
-let make_index_html params =
+let make_index_html _params =
   Html.(html [] [ p [ cdata "hohoho" ] ])
 
 let on_all_http_msg oc msg =
@@ -153,6 +165,11 @@ let server_or_kaputt ic oc =
     kaputt oc str
 
 let () =
+  Config.parse_args Sys.argv ;
+  (* Check the config and open all files *)
+  Array.iter (fun g ->
+      Array.iter Read_csv.update_file_info g.Config.files
+    ) !Config.graphs ;
   (* simple server: *)
   let addr = Unix.(ADDR_INET (inet_addr_of_string "127.0.0.1", port)) in
   Unix.establish_server server_or_kaputt addr
