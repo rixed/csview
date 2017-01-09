@@ -222,6 +222,7 @@ let get_current_x_field () =
   f
 
 let new_field fields idx =
+  assert (idx >= 0) ;
   let f = make_new_field idx in
   last_field := Some f ;
   append fields f
@@ -235,17 +236,17 @@ let string_of_timestamp ts =
     (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
     tm.tm_hour tm.tm_min tm.tm_sec
 
-(* FIXME: no need for more than one option list *)
 let field_options = [| {
   names = [| "x" |] ;
   has_param = true ;
   descr = "field number (starting at 0) of the X value for this graph" ;
   doc = "" ;
   setter = (fun s ->
+    Printf.eprintf "set x index to %s\n%!" s ;
     let f = get_current_x_field () in
     if f.index <> ~-1 then
       raise (ParseError "Set twice the X field") ;
-    f.index <- int_of_string s) ;
+    f.index <- int_of_string s) ; (* TODO: index of string that validates >= 0 *)
 } ; {
   names = [| "y" ; "y1" |] ;
   has_param = true ;
@@ -367,28 +368,30 @@ let chop_dashes s =
 let try_parse_option opts n v =
   match chop_dashes n with
   | exception Not_found ->
-    false
+    None
   | n ->
-    if Array.exists (fun opt ->
-        Array.exists ((=) n) opt.names &&
-        (match opt.has_param, v with
+    let rec loop o =
+      if o >= Array.length opts then None else
+      let opt = opts.(o) in
+      if Array.exists ((=) n) opt.names then
+        match opt.has_param, v with
         | true, Some v ->
-          opt.setter v ; true
+          Some (opt, v)
         | false, _ ->
-          opt.setter "true" ; true
-        | _ -> false) ||
-        not opt.has_param &&
+          Some (opt, "true")
+        | _ -> None
+      else if not opt.has_param &&
         String.starts_with n "no" &&
-        Array.exists ((=) (chop_dashes (chop n 2))) opt.names &&
-        (opt.setter "false" ; true)
-      ) opts then true
-    else invalid_arg n
+        Array.exists ((=) (chop_dashes (chop n 2))) opt.names then
+        Some (opt, "false")
+      else loop (o+1) in
+    loop 0
 
-let try_parse_bareword opts v =
-  Array.exists (fun opt ->
-      Array.length opt.names = 0 &&
-      (opt.setter v ; true)
-    ) opts
+let try_parse_bareword opts =
+  try Some (Array.find (fun opt ->
+      Array.length opt.names = 0
+    ) opts)
+  with Not_found -> None
 
 let parse_args args =
   let options = [
@@ -397,21 +400,29 @@ let parse_args args =
     "Graph options", graph_options ;
     "File options", file_options ;
     "Field options", field_options ] in
-  let rec loop test_opts i =
+  let rec loop i =
     if i < Array.length args then (
       let p = args.(i) in
-      if p = "--" then loop false (i+1) else (
-        let v =
-          if i < Array.length args - 1 then Some args.(i+1)
-          else None in
-        if not (test_opts && List.exists (fun (_, opts) ->
-          try_parse_option opts p v) options) then
-        if not (List.exists (fun (_, opts) ->
-          try_parse_bareword opts p) options) then
-        Printf.eprintf "What do you mean by '%s'?\n" p
-      )
+      let v =
+        if i < Array.length args - 1 then Some args.(i+1)
+        else None in
+      (* oulala c tout pourris on ne sait meme pas si v est consomme.
+       * ce qu'il faut c'est trouver l'option sans la setter puis la
+       * setter ici et gerrer l'erreur. et avancer i selon has_param. *)
+      let opt, v = match List.find_map (fun (_, opts) ->
+          try_parse_option opts p v) options with
+        | exception Not_found ->
+          (match List.find_map (fun (_, opts) ->
+            try_parse_bareword opts) options with
+          | exception Not_found ->
+            Printf.eprintf "What do you mean by '%s'?\n" p ;
+            exit 1
+          | o -> o, p)
+        | o_v -> o_v in
+      opt.setter v ;
+      loop (i + (if opt.has_param then 2 else 1))
     ) in
-  loop true 1 ;  (* TODO: get exceptions *)
+  loop 1 ;  (* TODO: get exceptions *)
   if !print_help then (
     List.iter (fun (section, opts) ->
       Printf.printf "%s\n\n" section ;

@@ -73,7 +73,7 @@ let get_graph oc params =
   let open Config in
   let get n = CodecUrl.get_single_query_param params n in
   let default v f = try f () with Not_found -> v in
-  let gi = get "gi" |> int_of_string in
+  let gi = default 0 (fun () -> get "gi" |> int_of_string) in
   let g = !graphs.(gi) in
   let t1 = default g.files.(0).first_x (fun () -> get "t1" |> float_of_string)
   and t2 = default g.files.(0).last_x (fun () -> get "t2" |> float_of_string)
@@ -84,6 +84,8 @@ let get_graph oc params =
   let f_idx = 0 in
   let file = g.files.(f_idx) in
   let data = Read_csv.read_all file.fd file.x_field.index file.separator file.x_field.to_value file.block_size file.size n t1 t2 in
+  Array.iteri (fun i (x, s) ->
+      Printf.eprintf "data.(%d) = %f, '%s'\n%!" i x s) data ;
   (* data is an array of n data points (or less), where each data point is:
      ts : float * line : string *)
   (* Let's forget about what we asked and use the actual number instead: *)
@@ -92,7 +94,8 @@ let get_graph oc params =
   (* The fold function is supposed to accumulate over all datasets *)
   let fold = { Chart.fold = fun f init ->
     let field_getter field i =
-      let _, line = data.(i) in
+      let x, line = data.(i) in
+      Printf.eprintf "data.(%d) = %f, '%s'\n%!" i x line ;
       let y, _ = Read_csv.extract_field line file.separator 0 field.index field.to_value in
       Printf.eprintf "%d->%f\n" i y ;
       y in
@@ -165,11 +168,12 @@ let server_or_kaputt ic oc =
     kaputt oc str
 
 let () =
+  Printf.eprintf "Parse command line...\n%!" ;
   Config.parse_args Sys.argv ;
-  (* Check the config and open all files *)
+  Printf.eprintf "Check the config and open all files...\n%!" ;
   Array.iter (fun g ->
       Array.iter Read_csv.update_file_info g.Config.files
     ) !Config.graphs ;
-  (* simple server: *)
+  Printf.eprintf "Start HTTP server on port %d...\n%!" port ;
   let addr = Unix.(ADDR_INET (inet_addr_of_string "127.0.0.1", port)) in
   Unix.establish_server server_or_kaputt addr
