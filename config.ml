@@ -11,7 +11,7 @@ type field = {
   mutable to_value : string -> float ;
   mutable to_label : string -> string ;
   mutable color : string ;
-  mutable width : float ;
+  mutable stroke_width : float ;
   mutable filled : bool ;
   mutable opacity : float ;
 }
@@ -38,11 +38,15 @@ type graph = {
   mutable y2_label : string ;
   mutable y1_stacked : bool ;
   mutable y2_stacked : bool ;
+  width : int ;
+  height : int ;
 }
 
 type global = {
   mutable confdir : string ;
   mutable open_browser_with : string ;
+  mutable svg_width : int ;
+  mutable svg_height : int ;
 }
 
 type cli_option = {
@@ -56,6 +60,8 @@ type cli_option = {
 let global = {
   confdir = Unix.getenv("USER") ^ "/.csview" ;
   open_browser_with = "open http://localhost:%port%" ;
+  svg_width = 800 ;
+  svg_height = 600 ;
 }
 
 let global_options = [| {
@@ -70,6 +76,18 @@ let global_options = [| {
   descr = "command to launch the browser" ;
   doc = "%port% will be replaced by the port csview is listening at." ;
   setter = (fun s -> global.open_browser_with <- s) ;
+} ; {
+  names = [| "svg-width" ; "width" |] ;
+  has_param = true ;
+  descr = "width in pixels for the next graphs" ;
+  doc = "" ;
+  setter = (fun s -> global.svg_width <- int_of_string s)
+} ; {
+  names = [| "svg-height" ; "height" |] ;
+  has_param = true ;
+  descr = "height in pixels for the next graphs" ;
+  doc = "" ;
+  setter = (fun s -> global.svg_height <- int_of_string s)
 } |]
 
 (* We create a new graph when we set again a field that has already been set.
@@ -85,7 +103,7 @@ let make_new_field index = {
   to_value = float_of_string ;
   to_label = identity ;
   color = "" ;
-  width = 1. ; filled = false ; opacity = 1.
+  stroke_width = 1. ; filled = false ; opacity = 1.
 }
 
 let make_new_file fname =
@@ -108,6 +126,8 @@ let make_new_graph () = {
   y1_label = default_y1_label ;
   y2_label = default_y2_label ;
   y1_stacked = false ; y2_stacked = false ;
+  width = global.svg_width ;
+  height = global.svg_height ;
 }
 
 let graphs = ref [| |]
@@ -287,11 +307,11 @@ let field_options = [| {
   doc = "" ;
   setter = (fun s -> (get_last_field ()).color <- s)
 } ; {
-  names = [| "width" |] ;
+  names = [| "stroke-width" |] ;
   has_param = true ;
   descr = "stroke width" ;
   doc = "" ;
-  setter = (fun s -> (get_last_field ()).width <- float_of_string s)
+  setter = (fun s -> (get_last_field ()).stroke_width <- float_of_string s)
 } ; {
   names = [| "opacity" |] ;
   has_param = true ;

@@ -15,7 +15,6 @@ module HttpParser = CodecHttp.MakeParser (ParserConfigWithOffset)
 let respond oc msg =
   Printf.fprintf oc "%s%!" (CodecHttp.Msg.encode msg)
 
-(* TODO: optional stack trace? *)
 let kaputt oc str =
   respond oc CodecHttp.(Msg.{
     start_line = StartLine.Response StatusLine.{
@@ -84,8 +83,6 @@ let get_graph oc params =
   let f_idx = 0 in
   let file = g.files.(f_idx) in
   let data = Read_csv.read_all file.fd file.x_field.index file.separator file.x_field.to_value file.block_size file.size n t1 t2 in
-  Array.iteri (fun i (x, s) ->
-      Printf.eprintf "data.(%d) = %f, '%s'\n%!" i x s) data ;
   (* data is an array of n data points (or less), where each data point is:
      ts : float * line : string *)
   (* Let's forget about what we asked and use the actual number instead: *)
@@ -94,8 +91,7 @@ let get_graph oc params =
   (* The fold function is supposed to accumulate over all datasets *)
   let fold = { Chart.fold = fun f init ->
     let field_getter field i =
-      let x, line = data.(i) in
-      Printf.eprintf "data.(%d) = %f, '%s'\n%!" i x line ;
+      let _, line = data.(i) in
       let y, _ = Read_csv.extract_field line file.separator 0 field.index field.to_value in
       Printf.eprintf "%d->%f\n" i y ;
       y in
@@ -109,12 +105,29 @@ let get_graph oc params =
     } in
   (* TODO: add other files to this SVG, without the axis *)
   let vx_step = (t2-.t1) /. float_of_int (n-1) in
-  let svg = Chart.xy_plot "time" "value" t1 vx_step n fold in
+  let svg =
+    Chart.xy_plot ~svg_width:(float_of_int g.width)
+                  ~svg_height:(float_of_int g.height) "time" "value"
+                  t1 vx_step n fold in
   let msg = http_msg_of_svg svg in
   respond oc msg
 
 let make_index_html _params =
-  Html.(html [] [ p [ cdata "hohoho" ] ])
+  (* Can't be static because it depends on the number of graphs.
+   * But we will refer to the static JS *)
+  let html_of_graph g i =
+    let attrs = [
+      "width", string_of_int g.Config.width ;
+      "height", string_of_int g.Config.height ] in
+    Html.img ~attrs ("/graph.svg?g="^ string_of_int i) in
+  let html_of_graphs gs =
+    let rec loop prev i =
+      if i >= Array.length gs then List.rev prev
+      else loop (html_of_graph gs.(i) i :: prev) (i+1) in
+    loop [] 0 in
+  Html.(html [
+    tag "script" ~attrs:["src", "/static/csview.js"] [] ]
+    (html_of_graphs !Config.graphs))
 
 let on_all_http_msg oc msg =
   match msg.CodecHttp.Msg.start_line with
@@ -127,8 +140,8 @@ let on_all_http_msg oc msg =
     (match url.CodecUrl.path with
     | "/graph.svg" ->
       get_graph oc params
-    | "/favico.ico" ->
-      http_msg_of_file "static/index.html" |>
+    | "/static/favicon.ico" | "/static/csview.js" ->
+      http_msg_of_file ("./"^ url.CodecUrl.path) |>
       respond oc
     | "/index.html" ->
       make_index_html params |>
