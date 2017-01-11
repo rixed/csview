@@ -18,12 +18,12 @@ type field = {
 
 type file = {
   mutable fname : string ;
+  mutable fd : Unix.file_descr ;
   mutable separator : char ;
   mutable x_field : field ;
   mutable y1_fields : field array ;
   mutable y2_fields : field array ;
   mutable annot_fields : field array ;
-  mutable fd : Unix.file_descr ;
   mutable size : int ;
   mutable first_x : float ;
   mutable last_x : float ;
@@ -38,6 +38,9 @@ type graph = {
   mutable y2_label : string ;
   mutable y1_stacked : bool ;
   mutable y2_stacked : bool ;
+  mutable x_start : float option ; (* initial starting position *)
+  mutable x_stop : float option ;
+  mutable force_show_0 : bool ;
   width : int ;
   height : int ;
 }
@@ -110,13 +113,14 @@ let make_new_file fname =
   last_field := None ;
   {
     fname ; separator = ',' ;
+    fd = Unix.stdin ; (* typechecks *)
     x_field = make_new_field ~-1 ;
     y1_fields = [| |] ;
     y2_fields = [| |] ;
     annot_fields = [| |] ;
-    fd = Unix.stdin ; size = -1 ;
+    size = -1 ;
     first_x = 0. ; last_x = 0. ;
-    block_size = 4096 ;
+    block_size = 1024 ;
   }
 
 let make_new_graph () = {
@@ -126,6 +130,8 @@ let make_new_graph () = {
   y1_label = default_y1_label ;
   y2_label = default_y2_label ;
   y1_stacked = false ; y2_stacked = false ;
+  x_start = None ; x_stop  = None ;
+  force_show_0 = false ;
   width = global.svg_width ;
   height = global.svg_height ;
 }
@@ -195,6 +201,27 @@ let graph_options = [| {
   doc = "This is only for values plotted against the right Y axis." ;
   setter = (fun s ->
     (get_current_graph no_renew).y2_stacked <- bool_of_string s) ;
+} ; {
+  names = [| "force-show-0" ; "force-0" ; "show-0" |] ;
+  has_param = false ;
+  descr = "Force the Y axis to include 0" ;
+  doc = "" ;
+  setter = (fun s ->
+    (get_current_graph no_renew).force_show_0 <- s = "true") ;
+} ; {
+  names = [| "start-x" ; "x-start" ; "start" |] ;
+  has_param = true ;
+  descr = "Initial starting value for the X axis" ;
+  doc = "First value of first file if unset." ;
+  setter = (fun s ->
+    (get_current_graph no_renew).x_start <- Some (float_of_string s)) ;
+} ; {
+  names = [| "stop-x" ; "x-stop" ; "stop" |] ;
+  has_param = true ;
+  descr = "Initial final value for the X axis" ;
+  doc = "Last value of first file is unset." ;
+  setter = (fun s ->
+    (get_current_graph no_renew).x_stop <- Some (float_of_string s)) ;
 } |]
 
 (* For files we start a new one after each bareword parameter (file name) *)
@@ -207,8 +234,7 @@ let get_current_file () =
 let new_file s =
   let g = get_current_graph no_renew in
   let f = make_new_file s in
-  g.files <- append g.files f ;
-  f
+  g.files <- append g.files f
 
 let file_options = [| {
   names = [| "separator" |] ;
@@ -224,9 +250,7 @@ let file_options = [| {
   has_param = false ;
   descr = "CSV file" ;
   doc = "" ;
-  setter = (fun s ->
-    let f = new_file s in
-    f.fd <- Unix.(openfile s [O_RDONLY; O_CLOEXEC] 0o644)) ;
+  setter = (fun s -> new_file s) ;
 } |]
 
 (* We create a new field each time we set a value that was already set *)

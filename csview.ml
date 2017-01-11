@@ -1,4 +1,7 @@
 open Batteries
+open Option.Infix
+
+let debug = true
 
 let port = 28019
 
@@ -18,7 +21,7 @@ let respond oc msg =
 let kaputt oc str =
   respond oc CodecHttp.(Msg.{
     start_line = StartLine.Response StatusLine.{
-      version = 1, 0 ;
+      version = 1, 1 ;
       code = 500 ;
       msg = "Kaputt" } ;
     headers = [
@@ -32,7 +35,7 @@ let http_msg_of_html ?(content_type="text/html") html =
     (IO.to_string Html.print html) in
   CodecHttp.(Msg.{
     start_line = StartLine.Response StatusLine.{
-      version = 1, 0 ;
+      version = 1, 1 ;
       code = 200 ;
       msg = "Okay" } ;
     headers = [
@@ -59,7 +62,7 @@ let http_msg_of_file fname =
   let body = read_whole_file fname in
   CodecHttp.(Msg.{
     start_line = StartLine.Response StatusLine.{
-      version = 1, 0 ;
+      version = 1, 1 ;
       code = 200 ;
       msg = "Okay" } ;
     headers = [
@@ -72,61 +75,68 @@ let get_graph oc params =
   let open Config in
   let get n = CodecUrl.get_single_query_param params n in
   let default v f = try f () with Not_found -> v in
-  let gi = default 0 (fun () -> get "gi" |> int_of_string) in
+  let gi = default 0 (fun () -> get "g" |> int_of_string) in
   let g = !graphs.(gi) in
   let t1 = default g.files.(0).first_x (fun () -> get "t1" |> float_of_string)
   and t2 = default g.files.(0).last_x (fun () -> get "t2" |> float_of_string)
   and n = default 100 (fun () -> get "n" |> int_of_string)
   in
-  Printf.eprintf "Reading data\n" ;
-  (* TODO: fold the SVG for all files fi *)
-  let f_idx = 0 in
-  let file = g.files.(f_idx) in
-  let data = Read_csv.read_all file.fd file.x_field.index file.separator file.x_field.to_value file.block_size file.size n t1 t2 in
-  (* data is an array of n data points (or less), where each data point is:
-     ts : float * line : string *)
-  (* Let's forget about what we asked and use the actual number instead: *)
-  let n = Array.length data in
-  Printf.eprintf "Computing SVG\n" ;
   (* The fold function is supposed to accumulate over all datasets *)
   let fold = { Chart.fold = fun f init ->
-    let field_getter field i =
-      let _, line = data.(i) in
-      let y, _ = Read_csv.extract_field line file.separator 0 field.index field.to_value in
-      Printf.eprintf "%d->%f\n" i y ;
-      y in
-    let init' = Array.fold_left (fun prev field ->
-      f prev field.label true (* left Y-axis *) (field_getter field))
-      init file.y1_fields in
-    Array.fold_left (fun prev field ->
-      f prev field.label false (* right Y-axis *) (field_getter field))
-      init' file.y2_fields
-    (* TODO: the annotations *)
-    } in
+    (* we want to iterate over all fields of all files of this graph *)
+    let rec for_all_fields f_idx prev  =
+      if f_idx >= Array.length g.files then prev else (
+        let file = g.files.(f_idx) in
+        (* We cannot open the file earlier because this is a forking server and
+         * we do not want to share the file offsets with other processes *)
+        let data = Read_csv.read_all file.fd file.x_field.index file.separator file.x_field.to_value file.block_size file.size n t1 t2 in
+        (* data is an array of n data points, where each data point is:
+           ts : float * line : string *)
+        (* Let's forget about what we asked and use the actual number instead: *)
+        let field_getter field i =
+          let _, line = data.(i) in
+          let y, _ = Read_csv.extract_field line file.separator 0 field.index field.to_value in
+          y in
+        let prev' = Array.fold_left (fun prev field ->
+          f prev field.label true (* left Y-axis *) (field_getter field))
+          prev file.y1_fields in
+        let prev' = Array.fold_left (fun prev field ->
+          f prev field.label false (* right Y-axis *) (field_getter field))
+          prev' file.y2_fields in
+        (* TODO: the annotations *)
+        for_all_fields (f_idx+1) prev') in
+    for_all_fields 0 init } in
   (* TODO: add other files to this SVG, without the axis *)
   let vx_step = (t2-.t1) /. float_of_int (n-1) in
+  let force_show_0 = g.force_show_0 in
   let svg =
     Chart.xy_plot ~svg_width:(float_of_int g.width)
-                  ~svg_height:(float_of_int g.height) "time" "value"
-                  t1 vx_step n fold in
+                  ~svg_height:(float_of_int g.height)
+                  ~force_show_0
+                  g.x_label g.y1_label t1 vx_step n fold in
   let msg = http_msg_of_svg svg in
   respond oc msg
 
 let make_index_html _params =
-  (* Can't be static because it depends on the number of graphs.
-   * But we will refer to the static JS *)
+  (* Can't be static because it depends on the number of graphs. *)
   let html_of_graph g i =
     let attrs = [
       "width", string_of_int g.Config.width ;
       "height", string_of_int g.Config.height ] in
-    Html.img ~attrs ("/graph.svg?g="^ string_of_int i) in
+    let id = "graph_"^ string_of_int i in
+    let open Config in
+    let t1 = g.x_start |? g.files.(0).first_x
+    and t2 = g.x_stop  |? g.files.(0).last_x in
+    let url = "/graph.svg?g="^ string_of_int i ^
+              "&t1="^ string_of_float t1 ^"&t2="^ string_of_float t2 in
+    Html.img ~attrs ~id url in
   let html_of_graphs gs =
     let rec loop prev i =
       if i >= Array.length gs then List.rev prev
       else loop (html_of_graph gs.(i) i :: prev) (i+1) in
     loop [] 0 in
-  Html.(html [
-    tag "script" ~attrs:["src", "/static/csview.js"] [] ]
+  Html.(html ~onload:"init()" [
+    tag "script" ~attrs:["src", "/csview.js"] [] ]
     (html_of_graphs !Config.graphs))
 
 let on_all_http_msg oc msg =
@@ -135,13 +145,13 @@ let on_all_http_msg oc msg =
     let url =
       r.CodecHttp.RequestLine.url |>
       CodecUrl.of_string in
-    Printf.printf "answering to %s...\n%!" (CodecUrl.to_string url) ;
+    if debug then Printf.printf "answering to %s...\n%!" (CodecUrl.to_string url) ;
     let params = CodecUrl.parse_query_of_url url in
     (match url.CodecUrl.path with
     | "/graph.svg" ->
       get_graph oc params
-    | "/static/favicon.ico" | "/static/csview.js" ->
-      http_msg_of_file ("./"^ url.CodecUrl.path) |>
+    | "/favicon.ico" | "/csview.js" ->
+      http_msg_of_file ("./static/"^ url.CodecUrl.path) |>
       respond oc
     | "/index.html" ->
       make_index_html params |>
@@ -159,12 +169,12 @@ let on_all_err err =
     (HttpParser.P.print_bad_result CodecHttp.Msg.print) err
 
 let server ic' oc =
-  Printf.printf "New connection! I'm so excited!!\n%!" ;
+  if debug then Printf.printf "New connection! I'm so excited!!\n%!" ;
   let ic = Unix.descr_of_in_channel ic' in
   let rec loop stream =
     let parser_res =
       HttpParser.(p [] None Parsers.no_error_correction stream |> P.to_result) in
-    Printf.printf "Received:\n%a\n%!"
+    if debug then Printf.printf "Received:\n%a\n%!"
       (HttpParser.P.print_result CodecHttp.Msg.print) parser_res ;
     match parser_res with
     | Ok (msg, stream') ->
@@ -174,6 +184,12 @@ let server ic' oc =
   loop (make_stream ic)
 
 let server_or_kaputt ic oc =
+  (* Do open the files once per process *)
+  Printf.printf "New server, opening all files.\n%!" ;
+  Array.iter (fun g ->
+      assert (Array.length g.Config.files > 0) ;
+      Array.iter Read_csv.update_file_info g.Config.files
+    ) !Config.graphs ;
   try server ic oc
   with e ->
     let str = Printexc.to_string e ^"\n"^
@@ -184,9 +200,6 @@ let () =
   Printf.eprintf "Parse command line...\n%!" ;
   Config.parse_args Sys.argv ;
   Printf.eprintf "Check the config and open all files...\n%!" ;
-  Array.iter (fun g ->
-      Array.iter Read_csv.update_file_info g.Config.files
-    ) !Config.graphs ;
   Printf.eprintf "Start HTTP server on port %d...\n%!" port ;
   let addr = Unix.(ADDR_INET (inet_addr_of_string "127.0.0.1", port)) in
   Unix.establish_server server_or_kaputt addr

@@ -1,5 +1,7 @@
 open Batteries
 
+let debug = false
+
 let max_line_size_ever = 10240
 
 let file_size fd = Unix.(lseek fd 0 SEEK_END)
@@ -9,7 +11,6 @@ let file_size fd = Unix.(lseek fd 0 SEEK_END)
  *)
 
 let read_at fd ofs bs =
-  Printf.eprintf "read %d bytes @ %d\n%!" bs ofs ;
   let open Unix in
   let buf = Bytes.create bs in
   let ofs' = lseek fd ofs SEEK_SET in
@@ -56,40 +57,40 @@ let rec sep_index_from str sep start =
 
 (* Extract the field starting at the given position.
  * Raises Not_found if it's not entirely in str. *)
-let extract_field str field_sep line_start field_num fos =
+let extract_field str sep line_start fn fos =
   let field_start =
-    find_nth_field_from str field_sep line_start field_num in
-  let field_stop = sep_index_from str field_sep field_start in
+    find_nth_field_from str sep line_start fn in
+  let field_stop = sep_index_from str sep field_start in
   String.sub str field_start (field_stop - field_start) |> fos,
   field_stop
 
 (* returns -1,0 or -1, as well as the offset in the block where the line starts
  * and the value for the time. Raises Not_found if we cannot find any value of
  * t.  Only looks at the first line within the block. *)
-let cmp_block_begin str field_num field_sep float_of_field target =
+let cmp_block_begin str fn sep fos t =
   (* Look for the first line start *)
   let line_start = String.index str '\n' + 1 in
-  let t, _ =
-    extract_field str field_sep line_start field_num float_of_field in
-  Printf.eprintf "found ts=%f @ %d\n%!" t line_start ;
-  Float.compare target t
+  let t', _ =
+    extract_field str sep line_start fn fos in
+  if debug then Printf.eprintf "found ts=%f @ %d\n%!" t' line_start ;
+  Float.compare t t'
 
 (* Same as above but look for all values in that block ; returns the offset of
  * the line that's the closest to the value we are looking for. It's OK if
  * that line is not complete but we must consider only the lines which time
  * _is_ fully present. *)
-let find_line_in_block str field_num field_sep float_of_field target =
+let find_line_in_block str fn sep fos t =
   (* Note: this does not work for the first line of the file... *)
   let line_start = String.index str '\n' + 1 in
   let rec loop (prev_t, _prev_ofs as prev) ofs =
-    match extract_field str field_sep ofs field_num float_of_field with
+    match extract_field str sep ofs fn fos with
     | exception Not_found ->
       (* So the best we have is the previous one.
        * Note: It is guaranteed that we have had a full line already *)
       prev
-    | t, field_stop ->
-      let prev' = t, ofs in
-      if t < target then (
+    | t', field_stop ->
+      let prev' = t', ofs in
+      if t' < t then (
         match String.index_from str field_stop '\n' with
         | exception Not_found ->
           (* So that was it *)
@@ -97,45 +98,59 @@ let find_line_in_block str field_num field_sep float_of_field target =
         | end_of_line ->
           loop prev' (end_of_line+1)
       ) else (
-        (* We passed the target *)
+        (* We passed the target t *)
         if ofs = line_start then (
-          t, line_start
+          t', line_start
         ) else (
-          let d_before = target -. prev_t (* Will never happen on first iteration of loop because of starting value *)
-          and d_after = t -. target in
+          let d_before = t -. prev_t (* Will never happen on first iteration of loop because of starting value *)
+          and d_after = t' -. t in
           if d_before <= d_after then prev else prev'
         )
       ) in
   loop ((* won't be used I promise *) 0., 0) line_start
 
-(* Now given a block reader we can find the line with the target timestamp.
+(* Find the line with the target timestamp.
  * ofs_start is such that this beginning of a line is <= target and
- * ofs_end may be anywhere in a line that's > target *)
-let rec find_block fd field_num field_sep float_of_field target block_size_max ofs_start ofs_stop =
-  Printf.eprintf "find in [%d;%d]\n%!" ofs_start ofs_stop ;
-  if ofs_stop - ofs_start <= block_size_max then ofs_start else (
+ * ofs_end may be anywhere in a line that's > target.
+ * Since we look only at the first t of each block, the returned offset
+ * is close to the target but may be after or even before (if the best
+ * approx was the first TS of the next block). *)
+let rec find_block fd fn sep fos t bs ofs_start ofs_stop =
+  if ofs_stop - ofs_start <= bs then ofs_start else (
     let ofs_mid = (ofs_stop + ofs_start) / 2 in
     assert (ofs_mid >= ofs_start) ;
-    let block_size = min block_size_max (ofs_stop - ofs_mid) in
+    let block_size = min bs (ofs_stop - ofs_mid) in
     assert (ofs_mid + block_size <= ofs_stop) ;
     let str = read_at fd ofs_mid block_size in
-    match cmp_block_begin str field_num field_sep float_of_field target with
+    match cmp_block_begin str fn sep fos t with
     | -1 ->
-      find_block fd field_num field_sep float_of_field target block_size_max ofs_start ofs_mid
+      if debug then Printf.eprintf "t <, %d..%d\n%!" ofs_start ofs_mid ;
+      find_block fd fn sep fos t bs ofs_start ofs_mid
     | 1 ->
-      find_block fd field_num field_sep float_of_field target block_size_max ofs_mid ofs_stop
+      if debug then Printf.eprintf "t >, %d..%d\n%!" ofs_mid ofs_stop ;
+      find_block fd fn sep fos t bs ofs_mid ofs_stop
     | _ ->
       ofs_mid)
 
-let find_line fd field_num field_sep float_of_field target block_size_max max_ofs =
-  let ofs = find_block fd field_num field_sep float_of_field target block_size_max 0 max_ofs in
-  let block_size = min block_size_max (max_ofs - ofs) in
-  let str = read_at fd ofs block_size in
-  Printf.eprintf "find in block @ %d + %d\n%!" ofs block_size ;
-  let t_line, line_start = find_line_in_block str field_num field_sep float_of_field target in
-  let line_stop = String.index_from str line_start '\n' in
-  (* we want the end of line char to be present as a delimiter *)
-  t_line, String.sub str line_start (line_stop - line_start + 1)
+let find_line fd fn sep fos t bs sz =
+  let approx_ofs = find_block fd fn sep fos t bs 0 sz in
+  (* What we are looking for may be in the previous or next block, so let's
+   * read 3 blocks: *)
+  let start_ofs = max 0 (approx_ofs - bs)
+  and stop_ofs = min (approx_ofs + 2*bs) sz in
+  let block_size = stop_ofs - start_ofs in
+  let str = read_at fd start_ofs block_size in
+  let t_line, line_start = find_line_in_block str fn sep fos t in
+  try (
+    let line_stop = String.index_from str line_start '\n' in
+    (* we want the end of line char to be present as a delimiter *)
+    t_line, String.sub str line_start (line_stop - line_start + 1)
+  ) with Not_found ->
+    Printf.eprintf "Cannot find line, fn=%d, t=%f, bs=%d, sz=%d,\
+                    looking for newline from pos %d\n\
+                    We just read from %d to %d, the close block was at %d\n%!"
+      fn t bs sz line_start start_ofs stop_ofs approx_ofs ;
+    raise Not_found
 
 
 (*TARATATA$= find_line & ~printer:identity
@@ -159,27 +174,27 @@ let rec get_last_x fd sz bs sep fn fos =
   (* We discard incomplete last line if any *)
   match String.rindex str '\n' with
   | exception Not_found when bs' = bs ->
-    Printf.eprintf "can't find nl\n%!" ;
+    if debug then Printf.eprintf "can't find nl\n%!" ;
     (* try with bigger block size *)
     assert (bs < max_line_size_ever) ;
     get_last_x fd sz (bs * 2) sep fn fos
   | eol ->
-    Printf.eprintf "found eol at %d\n%!" eol ;
+    if debug then Printf.eprintf "found eol at %d\n%!" eol ;
     (* we must found the beginning of that line *)
     (match String.rindex_from str (eol-1) '\n' with
     | exception (Invalid_argument _ (* eol-1 was -1 *) | Not_found) ->
       if bs' < sz then (
-        Printf.eprintf "can't find sol\n%!" ;
+        if debug then Printf.eprintf "can't find sol\n%!" ;
         assert (bs < max_line_size_ever) ;
         get_last_x fd sz (bs * 2) sep fn fos
       ) else (
         (* we are at the beginning of the file *)
-        Printf.eprintf "we are at beginning of file\n%!" ;
+        if debug then Printf.eprintf "we are at beginning of file\n%!" ;
         extract_field str sep 0 fn fos |> fst
       )
     | last_eol ->
       let sol = last_eol + 1 in
-      Printf.eprintf "found sol at %d\n%!" sol ;
+      if debug then Printf.eprintf "found sol at %d\n%!" sol ;
       extract_field str sep sol fn fos |> fst)
 
 (*$= get_last_x & ~printer:string_of_float
@@ -202,6 +217,7 @@ let rec get_first_x fd sz bs sep fn fos =
 let update_file_info f =
   let open Config in
   Printf.eprintf "  Check file %s...\n%!" f.fname ;
+  f.fd <- Unix.(openfile f.fname [O_RDONLY; O_CLOEXEC] 0o644) ;
   let sz = file_size f.fd in
   if sz <> f.size then (
     f.size <- sz ;
@@ -232,15 +248,9 @@ let read_all fd fn sep fos bs sz n t1 t2 =
   (* Impossible to use fancy algorithm since times in ts are not necessarily
    * evenly spaced :( *)
   let dt = (t2 -. t1) /. float_of_int (n-1) in
-  let rec loop prev t =
-    if t > t2 then Array.of_list (List.rev prev) else
-    let x, _ as p = find_line fd fn sep fos t bs sz
-    and t' = t +. dt in
-    (* Avoid adding several times the same X - in case of oversampling *)
-    match prev with
-    | (x',_)::_ when x' = x ->
-      loop prev t'
-    | prev ->
-      loop (p::prev) t' in
-  loop [] t1
+  let rec loop n' prev t =
+    if n' >= n then Array.of_list (List.rev prev) else
+    let p = find_line fd fn sep fos t bs sz in
+    loop (n'+1) (p::prev) (t +. dt) in
+  loop 0 [] t1
 

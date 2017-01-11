@@ -143,7 +143,7 @@ after), per graph or global.
 - +--color+, +--width+, +--filled+, +--opacity+: index and name of a color,
   boolean or float;
 
-- +--config+, name of the directory to save/read configuration to/from (one per
+- +--confdir+, name of the directory to save/read configuration to/from (one per
   file for the file related settings and one per graph for the graph settings -
   which include the name of the file to use for that graph, and one global file
   for global settings such as the open-with below).
@@ -151,7 +151,14 @@ after), per graph or global.
 - +--no-browser+: to avoid opening the browser automatically
 - +--open-with+: how exactly to launch the browser?
 
-Filters: a way to say when to consider a y value depending on other fields.
+- +--confname+: instead of using the filename to get previous configuration
+  from confdir, use this alternate name. This is useful if for instance the
+  actual file is a temporary file as in `=(grep foo file.csv)`.
+
+== Filters
+
+A way to say when to consider a y value depending on other fields.
+
 Very complex and doable on the CSV directly. Also, would likely disprove the
 assumption that a CSV line can be read from any block.
 

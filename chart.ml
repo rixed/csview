@@ -1,7 +1,6 @@
 open Batteries
 open Html
 
-
 let grid_interval n start stop =
   let dv = stop -. start in
   (* find the round value closest to dv/n (by round we mean 1, 5, 10...) *)
@@ -52,7 +51,7 @@ let js_of_label l = "{ label:'"^ l ^"' }"
 let axis ?(extend_ticks=0.) ?(stroke="#000") ?(stroke_width=1.)
          ?(arrow_size=0.) ?(tick_spacing=100.) ?(tick_length=5.)
          ?(label="") ?(font_size=16.) ?opacity
-         ?(string_of_v=string_of_float) ?(invert=false)
+         ?(string_of_v=my_string_of_float) ?(invert=false)
          (x1, y1) (x2, y2) v_min v_max =
   let sq x = x *. x in
   let axis_len = sqrt (sq (x2-.x1) +. sq (y2-.y1)) in
@@ -158,12 +157,11 @@ type fold_t = {
     fold : 'a. ('a -> label -> bool -> (int -> float) -> 'a) -> 'a -> 'a }
             (* I wonder what's the world record in argument list length? *)
 type stacked = NotStacked | Stacked | StackedCentered
-let xy_plot ?(string_of_y=string_of_float) ?(string_of_y2=string_of_float) ?string_of_x
+let xy_plot ?(string_of_y=my_string_of_float) ?(string_of_y2=my_string_of_float) ?string_of_x
             ?(svg_width=800.) ?(svg_height=600.) ?(font_size=14.)
             ?(margin_bottom=30.) ?(margin_left=10.) ?(margin_top=30.) ?(margin_right=10.)
             ?(y_tick_spacing=100.) ?(x_tick_spacing=200.) ?(tick_length=5.5)
             ?(axis_arrow_h=11.)
-            ?(vxmin_filter="filter/start") ?(vxmax_filter="filter/stop") ?(vxstep_filter="filter/tstep")
             ?(stacked=NotStacked) ?(force_show_0=false) ?(show_rate=false) ?x_label_for_rate
             ?(scale_vx=1.)
             x_label y_label
@@ -271,8 +269,7 @@ let xy_plot ?(string_of_y=string_of_float) ?(string_of_y2=string_of_float) ?stri
           Buffer.add_string buf
             ((if i = 0 then moveto else lineto)
              (get_x (vx_of_bucket i),
-              let y = get_y pi vy' in
-              (Printf.eprintf "y(%d)=%f (vy'=%f)\n%!" i y vy'; y)))
+              get_y pi vy'))
         done ;
         if is_stacked then (
           (* Bottom line (to close the area) (note: we loop here from last to first) *)
