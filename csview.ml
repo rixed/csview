@@ -89,13 +89,13 @@ let get_graph oc params =
         let file = g.files.(f_idx) in
         (* We cannot open the file earlier because this is a forking server and
          * we do not want to share the file offsets with other processes *)
-        let data = Read_csv.read_all file.fd file.x_field.index file.separator file.x_field.to_value file.block_size file.size n t1 t2 in
+        let data = Read_csv.read_all file.fd file.x_field.index file.separator file.x_field.fmt.Formats.to_value file.block_size file.size n t1 t2 in
         (* data is an array of n data points, where each data point is:
            ts : float * line : string *)
         (* Let's forget about what we asked and use the actual number instead: *)
         let field_getter field i =
           let _, line = data.(i) in
-          let y, _ = Read_csv.extract_field line file.separator 0 field.index field.to_value in
+          let y, _ = Read_csv.extract_field line file.separator 0 field.index field.fmt.Formats.to_value in
           y in
         let prev' = Array.fold_left (fun prev field ->
           f prev field.label true (* left Y-axis *) (field_getter field))
@@ -108,14 +108,13 @@ let get_graph oc params =
     for_all_fields 0 init } in
   (* TODO: add other files to this SVG, without the axis *)
   let vx_step = (t2-.t1) /. float_of_int (n-1) in
-  let force_show_0 = g.force_show_0 in
-  let svg_width = float_of_int (g.width |? global.default_width)
-  and svg_height = float_of_int (g.height |? global.default_height)
-  and stacked_y1 = g.y1_stacked
-  and stacked_y2 = g.y2_stacked in
   let svg =
-    Chart.xy_plot ~svg_width ~svg_height ~stacked_y1 ~stacked_y2
-                  ~force_show_0
+    Chart.xy_plot ~string_of_x:g.files.(0).x_field.fmt.Formats.to_label
+                  ~svg_width:(float_of_int (g.width |? global.default_width))
+                  ~svg_height:(float_of_int (g.height |? global.default_height))
+                  ~stacked_y1:g.y1_stacked
+                  ~stacked_y2:g.y2_stacked
+                  ~force_show_0:g.force_show_0
                   g.x_label g.y1_label t1 vx_step n fold in
   let msg = http_msg_of_svg svg in
   respond oc msg

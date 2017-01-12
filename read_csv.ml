@@ -204,13 +204,13 @@ let update_file_info f =
     Printf.eprintf "    size is now %d\n%!" sz ;
     (try
       f.last_x <-
-        get_last_x f.fd f.size f.block_size f.separator f.x_field.index f.x_field.to_value ;
+        get_last_x f.fd f.size f.block_size f.separator f.x_field.index f.x_field.fmt.Formats.to_value ;
       Printf.eprintf "    last x is now %f\n%!" f.last_x
      with Not_found -> ()) ;
     if f.first_x = 0. then
       (try
         f.first_x <-
-          get_first_x f.fd f.size f.block_size f.separator f.x_field.index f.x_field.to_value ;
+          get_first_x f.fd f.size f.block_size f.separator f.x_field.index f.x_field.fmt.Formats.to_value ;
         Printf.eprintf "    first x is now %f\n%!" f.first_x
        with Not_found -> ()) ;
   )

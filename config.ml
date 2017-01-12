@@ -8,8 +8,7 @@ exception ParseError of string
 type field = {
   mutable index : int ;
   mutable label : string ;
-  mutable to_value : string -> float ;
-  mutable to_label : string -> string ;
+  mutable fmt : Formats.t ;
   mutable color : string ;
   mutable stroke_width : float ;
   mutable filled : bool ;
@@ -104,8 +103,7 @@ let last_field = ref None
 
 let make_new_field index = {
   index ; label = "label" ;
-  to_value = float_of_string ;
-  to_label = identity ;
+  fmt = Formats.numeric ;
   color = "" ;
   stroke_width = 1. ; filled = false ; opacity = 1.
 }
@@ -396,15 +394,10 @@ let field_options = [| {
   doc = "" ;
   setter = (fun s ->
     let f = get_last_field () in
-    match s with
-    | "numeric" ->
-      f.to_value <- float_of_string ;
-      f.to_label <- identity
-    | "timestamp" ->
-      f.to_value <- float_of_string ;
-      f.to_label <- string_of_timestamp
-    | _ ->
-      invalid_arg s)
+    f.fmt <- match s with
+      | "numeric" -> Formats.numeric
+      | "timestamp" -> Formats.timestamp
+      | _ -> invalid_arg s)
 } |]
 
 (* Other options are just for this run and not backed by any config file *)
