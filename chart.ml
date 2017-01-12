@@ -162,7 +162,8 @@ let xy_plot ?(string_of_y=my_string_of_float) ?(string_of_y2=my_string_of_float)
             ?(margin_bottom=30.) ?(margin_left=10.) ?(margin_top=30.) ?(margin_right=10.)
             ?(y_tick_spacing=100.) ?(x_tick_spacing=200.) ?(tick_length=5.5)
             ?(axis_arrow_h=11.)
-            ?(stacked=NotStacked) ?(force_show_0=false) ?(show_rate=false) ?x_label_for_rate
+            ?(stacked_y1=NotStacked) ?(stacked_y2=NotStacked)
+            ?(force_show_0=false) ?(show_rate=false) ?x_label_for_rate
             ?(scale_vx=1.)
             x_label y_label
             vx_min_unscaled vx_step_unscaled nb_vx
@@ -170,7 +171,8 @@ let xy_plot ?(string_of_y=my_string_of_float) ?(string_of_y2=my_string_of_float)
   let vx_min = vx_min_unscaled *. scale_vx
   and vx_step = vx_step_unscaled *. scale_vx
   and vx_max_unscaled = vx_min_unscaled +. (float_of_int nb_vx -. 0.5) *. vx_step_unscaled in
-  let force_show_0 = if stacked = StackedCentered then true else force_show_0 in
+  let force_show_0 = if stacked_y1 = StackedCentered || stacked_y2 = StackedCentered then true else force_show_0 in
+  let stacked = [| stacked_y1 ; stacked_y2 |] in
   let y_label_grid = if show_rate then y_label ^"/"^ (x_label_for_rate |? x_label) else y_label in
   (* build iter and map from fold *)
   let iter_datasets f = fold.fold (fun _prev label prim get -> f label prim get) ()
@@ -190,7 +192,7 @@ let xy_plot ?(string_of_y=my_string_of_float) ?(string_of_y2=my_string_of_float)
   let max_vy = Array.init 2 (fun _ -> Array.create nb_vx 0.) in
   let label2 = ref None in
   let set_max pi =
-    if stacked = NotStacked then
+    if stacked.(pi) = NotStacked then
       (* keep the max of the Ys *)
       (fun i c -> max_vy.(pi).(i) <- max max_vy.(pi).(i) c)
     else
@@ -210,18 +212,16 @@ let xy_plot ?(string_of_y=my_string_of_float) ?(string_of_y2=my_string_of_float)
         (0., max_float)
         max_vy.(pi) in
     vy_max.(pi) <- if force_show_0 then max ma 0. else ma ;
-    vy_min.(pi) <- if force_show_0 then min mi 0. else mi
+    vy_min.(pi) <- if force_show_0 then min mi 0. else mi ;
+    if stacked.(pi) = StackedCentered then (
+      vy_max.(pi) <- vy_max.(pi) *. 0.5 ;
+      vy_min.(pi) <- -. vy_max.(pi))
   done ;
-  if stacked = StackedCentered then (
-    vy_max.(0) <- vy_max.(0) *. 0.5 ;
-    vy_min.(0) <- -. vy_max.(0)) ;
-  Printf.eprintf "y_axis:(%f,%f) vy_min.(0):(%f,%f)\n"
-    y_axis_ymin y_axis_ymax vy_min.(0) vy_max.(0) ;
   let get_x    = get_ratio x_axis_xmin x_axis_xmax vx_min vx_max
   and get_y pi = get_ratio y_axis_ymin y_axis_ymax vy_min.(pi) vy_max.(pi) in
   (* In case we stack the values *)
   let prev_vy =
-    if stacked = StackedCentered then
+    if stacked.(0) = StackedCentered then
       (* Start from -0.5 * tot_y for this bucket *)
       Array.init nb_vx (fun i -> ~-.0.5 *. max_vy.(0).(i))
     else
@@ -248,8 +248,8 @@ let xy_plot ?(string_of_y=my_string_of_float) ?(string_of_y2=my_string_of_float)
     ) else "" in
   (* The SVG *)
   let path_of_dataset label prim get =
-    let is_stacked = stacked <> NotStacked && prim in
     let pi = if prim then 0 else 1 in
+    let is_stacked = stacked.(pi) <> NotStacked && prim in
     let label_str = string_of_label label in
     let label_js = js_of_label label in
     let color = Color.random_of_string label_str in
