@@ -131,6 +131,7 @@ let get_graph oc params =
                   ?string_of_y ?string_of_y2
                   ~svg_width:(float_of_int (g.width |? global.default_width))
                   ~svg_height:(float_of_int (g.height |? global.default_height))
+                  ~font_size:g.font_size
                   ~stacked_y1:g.y1_stacked
                   ~stacked_y2:g.y2_stacked
                   ~force_show_0:g.force_show_0

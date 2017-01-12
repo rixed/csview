@@ -42,6 +42,7 @@ type graph = {
   mutable x_start : float option ; (* initial starting position *)
   mutable x_stop : float option ;
   mutable force_show_0 : bool ;
+  mutable font_size : float ;
   width : int option ;
   height : int option ;
 }
@@ -135,6 +136,7 @@ let make_new_graph () = {
   y2_stacked = Chart.NotStacked ;
   x_start = None ; x_stop  = None ;
   force_show_0 = false ;
+  font_size = 14. ;
   width = None ;
   height = None ;
 }
@@ -229,6 +231,13 @@ let graph_options = [| {
   doc = "" ;
   setter = (fun s ->
     (get_current_graph no_renew).force_show_0 <- s = "true") ;
+} ; {
+  names = [| "font-size" |] ;
+  has_param = true ;
+  descr = "font size" ;
+  doc = "" ;
+  setter = fun s ->
+    (get_current_graph no_renew).font_size <- float_of_string s
 } ; {
   names = [| "start-x" ; "x-start" ; "start" |] ;
   has_param = true ;
