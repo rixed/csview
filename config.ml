@@ -18,6 +18,7 @@ type field = {
 
 type file = {
   mutable fname : string ;
+  mutable confname : string ;
   mutable fd : Unix.file_descr ;
   mutable separator : char ;
   mutable x_field : field ;
@@ -112,7 +113,8 @@ let make_new_field index = {
 let make_new_file fname =
   last_field := None ;
   {
-    fname ; separator = ',' ;
+    fname ; confname = "" ;
+    separator = ',' ;
     fd = Unix.stdin ; (* typechecks *)
     x_field = make_new_field ~-1 ;
     y1_fields = [| |] ;
@@ -251,6 +253,27 @@ let file_options = [| {
   descr = "CSV file" ;
   doc = "" ;
   setter = (fun s -> new_file s) ;
+} ; {
+  names = [| "block-size" |] ;
+  has_param = true ;
+  descr = "any block of that size should contain at least a full line." ;
+  doc = "" ;
+  setter = (fun s ->
+    (get_current_file ()).block_size <- int_of_string s) ;
+} ; {
+  names = [| "max-line-length" ; "max-line-len" |] ;
+  has_param = true ;
+  descr = "max line length" ;
+  doc = "Including the newline character." ;
+  setter = (fun s ->
+    (get_current_file ()).block_size <- 2 * int_of_string s) ;
+} ; {
+  names = [| "confname" ; "conf-name" ; "config-name" |] ;
+  has_param = true ;
+  descr = "assume this file name for fetching/saving configuration" ;
+  doc = "" ;
+  setter = (fun s ->
+    (get_current_file ()).confname <- s) ;
 } |]
 
 (* We create a new field each time we set a value that was already set *)
