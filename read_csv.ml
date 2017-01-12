@@ -19,26 +19,6 @@ let read_at fd ofs bs =
   assert (r = bs) ;
   Bytes.to_string buf
 
-(* Laisser tomber ce reader etc. Utiliser directement un Config.file.  Ajouter
- * dans graph.files le file descriptor et le premier x, le dernier et l'offset
- * max (ces deux dernier mutable).
- * 
- * Note: on a plusieurs file par graph, avec des ts propres (et pas forcement
- * alignés). Mais pour grapher on veux aligner les X (stacked graph, etc).
- * Bref, on a fait un truc trop compliqué dans Config -> on veux un ficher par
- * graph!  Apres tout on peut toujours joindre les CSV avant (comme filtres et
- * projections, on peut supposer qu'on  a un beau CSV en input).  Refactorer
- * config.ml, donc
- *
- * Non, parceque au moins pour les annotations on a besoin de plusieurs
- * fichiers. En fait on pourrait afficher les fichiers comme des graphs
- * indépendants, sans chercher å synchroniser (comme pour les annotations,
- * pour lesquelles il est important de concerver le vrai temp). Le seul soucis
- * c'est d'avoir plein de labels sur les axes. On pourrait donc dire qu'on ne
- * trace les axes et leur labels que pour la première courbe et les autre par
- * dessus sans labels. Oui voilà!
- *)
-
 (* Returns the position of the beginning of the nth field,
  * or Raises Not_found. *)
 let rec find_nth_field_from str sep start n =
