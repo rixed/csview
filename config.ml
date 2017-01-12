@@ -37,8 +37,8 @@ type graph = {
   mutable x_label : string ;
   mutable y1_label : string ;
   mutable y2_label : string ;
-  mutable y1_stacked : bool ;
-  mutable y2_stacked : bool ;
+  mutable y1_stacked : Chart.stacked ;
+  mutable y2_stacked : Chart.stacked ;
   mutable x_start : float option ; (* initial starting position *)
   mutable x_stop : float option ;
   mutable force_show_0 : bool ;
@@ -131,7 +131,8 @@ let make_new_graph () = {
   x_label = default_x_label ;
   y1_label = default_y1_label ;
   y2_label = default_y2_label ;
-  y1_stacked = false ; y2_stacked = false ;
+  y1_stacked = Chart.NotStacked ;
+  y2_stacked = Chart.NotStacked ;
   x_start = None ; x_stop  = None ;
   force_show_0 = false ;
   width = None ;
@@ -195,14 +196,32 @@ let graph_options = [| {
   descr = "Should values be stacked" ;
   doc = "This is only for values plotted against the left Y axis." ;
   setter = (fun s ->
-    (get_current_graph no_renew).y1_stacked <- bool_of_string s) ;
+    (get_current_graph no_renew).y1_stacked <-
+      if bool_of_string s then Chart.Stacked else Chart.NotStacked) ;
+} ; {
+  names = [| "stackcentered" ; "y1-stackcentered" |] ;
+  has_param = false ;
+  descr = "Should values be stacked (smarter stacking)" ;
+  doc = "This is only for values plotted against the left Y axis." ;
+  setter = (fun s ->
+    (get_current_graph no_renew).y1_stacked <-
+      if bool_of_string s then Chart.StackedCentered else Chart.NotStacked) ;
 } ; {
   names = [| "y2-stacked" |] ;
   has_param = false ;
   descr = "Should right values be stacked" ;
   doc = "This is only for values plotted against the right Y axis." ;
   setter = (fun s ->
-    (get_current_graph no_renew).y2_stacked <- bool_of_string s) ;
+    (get_current_graph no_renew).y2_stacked <-
+      if bool_of_string s then Chart.Stacked else Chart.NotStacked) ;
+} ; {
+  names = [| "y2-stackcentered" |] ;
+  has_param = false ;
+  descr = "Should right values be stacked (smarter stacking)" ;
+  doc = "This is only for values plotted against the right Y axis." ;
+  setter = (fun s ->
+    (get_current_graph no_renew).y2_stacked <-
+      if bool_of_string s then Chart.StackedCentered else Chart.NotStacked) ;
 } ; {
   names = [| "force-show-0" ; "force-0" ; "show-0" |] ;
   has_param = false ;
@@ -309,7 +328,6 @@ let field_options = [| {
   descr = "field number (starting at 0) of the X value for this graph" ;
   doc = "" ;
   setter = (fun s ->
-    Printf.eprintf "set x index to %s\n%!" s ;
     let f = get_current_x_field () in
     if f.index <> ~-1 then
       raise (ParseError "Set twice the X field") ;

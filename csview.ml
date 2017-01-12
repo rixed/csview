@@ -110,9 +110,10 @@ let get_graph oc params =
   let vx_step = (t2-.t1) /. float_of_int (n-1) in
   let force_show_0 = g.force_show_0 in
   let svg_width = float_of_int (g.width |? global.default_width)
-  and svg_height = float_of_int (g.height |? global.default_height) in
+  and svg_height = float_of_int (g.height |? global.default_height)
+  and stacked = g.y1_stacked in
   let svg =
-    Chart.xy_plot ~svg_width ~svg_height ~force_show_0
+    Chart.xy_plot ~svg_width ~svg_height ~stacked ~force_show_0
                   g.x_label g.y1_label t1 vx_step n fold in
   let msg = http_msg_of_svg svg in
   respond oc msg
