@@ -409,7 +409,9 @@ let other_options = [| {
   setter = (fun _ -> print_help := true) ;
 } |]
 
-(* Parse *)
+(*
+ * Command Line
+ *)
 
 let chop s n =
   String.sub s n (String.length s - n)
@@ -432,7 +434,7 @@ let chop_dashes s =
   "exc"  (try chop_dashes "opt" with Not_found -> "exc")
  *)
 
-let try_parse_option opts n v =
+let try_parse_option n v opts =
   match chop_dashes n with
   | exception Not_found ->
     None
@@ -460,36 +462,38 @@ let try_parse_bareword opts =
     ) opts)
   with Not_found -> None
 
-let parse_args args =
-  let options = [
-    "Runtime options", other_options ;
-    "Global options", global_options ;
-    "Graph options", graph_options ;
-    "File options", file_options ;
-    "Field options", field_options ] in
+let parse_options options args =
   let rec loop i =
     if i < Array.length args then (
-      let p = args.(i) in
-      let v =
-        if i < Array.length args - 1 then Some args.(i+1)
-        else None in
-      (* oulala c tout pourris on ne sait meme pas si v est consomme.
-       * ce qu'il faut c'est trouver l'option sans la setter puis la
-       * setter ici et gerrer l'erreur. et avancer i selon has_param. *)
-      let opt, v = match List.find_map (fun (_, opts) ->
-          try_parse_option opts p v) options with
-        | exception Not_found ->
-          (match List.find_map (fun (_, opts) ->
-            try_parse_bareword opts) options with
-          | exception Not_found ->
-            Printf.eprintf "What do you mean by '%s'?\n" p ;
-            exit 1
-          | o -> o, p)
-        | o_v -> o_v in
-      opt.setter v ;
-      loop (i + (if opt.has_param then 2 else 1))
+      match args.(i) with
+      | None -> loop (i+1)
+      | Some p ->
+        let v =
+          if i < Array.length args - 1 then args.(i+1)
+          else None in
+        try (
+          let opt, v =
+            try List.find_map (try_parse_option p v) options
+            with Not_found ->
+              List.find_map try_parse_bareword options, p in
+          opt.setter v ;
+          args.(i) <- None ;
+          if opt.has_param then args.(i+1) <- None ;
+          loop (i + (if opt.has_param then 2 else 1))
+        ) with Not_found -> loop (i + 1)
     ) in
-  loop 1 ;  (* TODO: get exceptions *)
+  loop 1
+
+let parse_args args =
+  (* We want the global and runtime options to be parsed first, and be
+   * insensitive to their position in the command line, and then the other
+   * options which effect depend on position. *)
+  (* So we can remove options that are processed already: *)
+  let args = Array.map Option.some args in
+  args.(0) <- None ;  (* This is not an option *)
+  parse_options [ other_options ] args ;
+  parse_options [ global_options ] args ;
+  parse_options [ graph_options ; file_options ; field_options ] args ;
   if !print_help then (
     List.iter (fun (section, opts) ->
       Printf.printf "%s\n\n" section ;
@@ -503,7 +507,16 @@ let parse_args args =
           ) ;
           Printf.printf "\n"
         ) opts ;
-      Printf.printf "\n") options ;
+      Printf.printf "\n") [
+        "Runtime options", other_options ;
+        "Global options", global_options ;
+        "Graph options", graph_options ;
+        "File options", file_options ;
+        "Field options", field_options ] ;
     exit 0
-  )
-
+  ) ;
+  Array.iter (function
+    | None -> ()
+    | Some arg ->
+      Printf.eprintf "Cannot parse '%s'\n" arg ;
+      exit 1) args
