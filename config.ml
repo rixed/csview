@@ -41,15 +41,15 @@ type graph = {
   mutable x_start : float option ; (* initial starting position *)
   mutable x_stop : float option ;
   mutable force_show_0 : bool ;
-  width : int ;
-  height : int ;
+  width : int option ;
+  height : int option ;
 }
 
 type global = {
   mutable confdir : string ;
   mutable open_browser_with : string ;
-  mutable svg_width : int ;
-  mutable svg_height : int ;
+  mutable default_width : int ;
+  mutable default_height : int ;
 }
 
 type cli_option = {
@@ -63,8 +63,8 @@ type cli_option = {
 let global = {
   confdir = Unix.getenv("USER") ^ "/.csview" ;
   open_browser_with = "open http://localhost:%port%" ;
-  svg_width = 800 ;
-  svg_height = 600 ;
+  default_width = 800 ;
+  default_height = 600 ;
 }
 
 let global_options = [| {
@@ -82,15 +82,15 @@ let global_options = [| {
 } ; {
   names = [| "svg-width" ; "width" |] ;
   has_param = true ;
-  descr = "width in pixels for the next graphs" ;
+  descr = "default graph width in pixels" ;
   doc = "" ;
-  setter = (fun s -> global.svg_width <- int_of_string s)
+  setter = (fun s -> global.default_width <- int_of_string s)
 } ; {
   names = [| "svg-height" ; "height" |] ;
   has_param = true ;
-  descr = "height in pixels for the next graphs" ;
+  descr = "default graph height in pixels" ;
   doc = "" ;
-  setter = (fun s -> global.svg_height <- int_of_string s)
+  setter = (fun s -> global.default_height <- int_of_string s)
 } |]
 
 (* We create a new graph when we set again a field that has already been set.
@@ -132,8 +132,8 @@ let make_new_graph () = {
   y1_stacked = false ; y2_stacked = false ;
   x_start = None ; x_stop  = None ;
   force_show_0 = false ;
-  width = global.svg_width ;
-  height = global.svg_height ;
+  width = None ;
+  height = None ;
 }
 
 let graphs = ref [| |]

@@ -1,7 +1,7 @@
 open Batteries
 open Option.Infix
 
-let debug = true
+let debug = false
 
 let port = 28019
 
@@ -109,10 +109,10 @@ let get_graph oc params =
   (* TODO: add other files to this SVG, without the axis *)
   let vx_step = (t2-.t1) /. float_of_int (n-1) in
   let force_show_0 = g.force_show_0 in
+  let svg_width = float_of_int (g.width |? global.default_width)
+  and svg_height = float_of_int (g.height |? global.default_height) in
   let svg =
-    Chart.xy_plot ~svg_width:(float_of_int g.width)
-                  ~svg_height:(float_of_int g.height)
-                  ~force_show_0
+    Chart.xy_plot ~svg_width ~svg_height ~force_show_0
                   g.x_label g.y1_label t1 vx_step n fold in
   let msg = http_msg_of_svg svg in
   respond oc msg
@@ -121,8 +121,8 @@ let make_index_html _params =
   (* Can't be static because it depends on the number of graphs. *)
   let html_of_graph g i =
     let attrs = [
-      "width", string_of_int g.Config.width ;
-      "height", string_of_int g.Config.height ] in
+      "width", string_of_int Config.(g.width |? global.default_width) ;
+      "height", string_of_int Config.(g.height |? global.default_height) ] in
     let id = "graph_"^ string_of_int i in
     let open Config in
     let t1 = g.x_start |? g.files.(0).first_x
