@@ -106,10 +106,29 @@ let get_graph oc params =
         (* TODO: the annotations *)
         for_all_fields (f_idx+1) prev') in
     for_all_fields 0 init } in
-  (* TODO: add other files to this SVG, without the axis *)
   let vx_step = (t2-.t1) /. float_of_int (n-1) in
+  (* For the labelling of X we take values and formatter from the first file.
+   * But for the labelling of y1 and y2 we take the first defined value on
+   * that axis: *)
+  let string_of_y, string_of_y2 =
+    let get_first_fmt fields =
+      try
+        let field = Array.find (fun field ->
+          field.fmt_was_set) fields in
+        Some field.fmt.Formats.to_label
+      with Not_found -> None in
+    Array.fold_left (fun (fmt1, fmt2) file ->
+        let fmt1 = match fmt1 with
+          | None -> get_first_fmt file.y1_fields
+          | _ -> fmt1
+        and fmt2 = match fmt2 with
+          | None -> get_first_fmt file.y2_fields
+          | _ -> fmt2 in
+        fmt1, fmt2
+      ) (None, None) g.files in
   let svg =
     Chart.xy_plot ~string_of_x:g.files.(0).x_field.fmt.Formats.to_label
+                  ?string_of_y ?string_of_y2
                   ~svg_width:(float_of_int (g.width |? global.default_width))
                   ~svg_height:(float_of_int (g.height |? global.default_height))
                   ~stacked_y1:g.y1_stacked

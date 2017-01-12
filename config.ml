@@ -9,6 +9,7 @@ type field = {
   mutable index : int ;
   mutable label : string ;
   mutable fmt : Formats.t ;
+  mutable fmt_was_set : bool ; (* track those that were explicitly set *)
   mutable color : string ;
   mutable stroke_width : float ;
   mutable filled : bool ;
@@ -104,6 +105,7 @@ let last_field = ref None
 let make_new_field index = {
   index ; label = "label" ;
   fmt = Formats.numeric ;
+  fmt_was_set = false ;
   color = "" ;
   stroke_width = 1. ; filled = false ; opacity = 1.
 }
@@ -394,6 +396,7 @@ let field_options = [| {
   doc = "" ;
   setter = (fun s ->
     let f = get_last_field () in
+    f.fmt_was_set <- true ;
     f.fmt <- match s with
       | "numeric" -> Formats.numeric
       | "timestamp" -> Formats.timestamp
