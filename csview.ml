@@ -54,9 +54,10 @@ let read_whole_file fname =
   str
 
 let content_type_of_file f =
-  let _, ext = String.rsplit f ~by:"." in
-  if ext = "html" then "text/html"
-  else "text/plain"
+  match String.rsplit f ~by:"." with
+  | _, "html" -> "text/html"
+  | _, "css"  -> "text/css"
+  | _ -> "text/plain"
 
 let http_msg_of_file fname =
   let body = read_whole_file fname in
@@ -151,13 +152,16 @@ let make_index_html _params =
     and t2 = g.x_stop  |? g.files.(0).last_x in
     let url = "/graph.svg?g="^ string_of_int i ^
               "&t1="^ string_of_float t1 ^"&t2="^ string_of_float t2 in
-    Html.img ~attrs ~id url in
+    Html.Block (
+      (if g.title <> "" then [ Html.h2 g.title ] else []) @
+      [ Html.img ~attrs ~id url ]) in
   let html_of_graphs gs =
     let rec loop prev i =
       if i >= Array.length gs then List.rev prev
       else loop (html_of_graph gs.(i) i :: prev) (i+1) in
     loop [] 0 in
   Html.(html ~onload:"init()" [
+    link_css "/style.css" ;
     tag "script" ~attrs:["src", "/csview.js"] [] ]
     (html_of_graphs !Config.graphs))
 
@@ -172,7 +176,7 @@ let on_all_http_msg oc msg =
     (match url.CodecUrl.path with
     | "/graph.svg" ->
       get_graph oc params
-    | "/favicon.ico" | "/csview.js" ->
+    | "/favicon.ico" | "/csview.js" | "/style.css" ->
       http_msg_of_file ("./static/"^ url.CodecUrl.path) |>
       respond oc
     | "/index.html" ->
