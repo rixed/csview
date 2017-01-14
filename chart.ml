@@ -157,7 +157,7 @@ type fold_t = {
     (* The bool in there is true for all plots in the "primary" chart, and
      * false once at most for the "secondary" plot. Note: the secondary plot
      * is displayed with a distinct Y axis. *)
-    fold : 'a. ('a -> label -> bool -> (int -> float) -> 'a) -> 'a -> 'a }
+    fold : 'a. ('a -> Color.t -> label -> bool -> (int -> float) -> 'a) -> 'a -> 'a }
             (* I wonder what's the world record in argument list length? *)
 type stacked = NotStacked | Stacked | StackedCentered
 let xy_plot ?(string_of_y=my_string_of_float) ?(string_of_y2=my_string_of_float) ?string_of_x
@@ -178,8 +178,8 @@ let xy_plot ?(string_of_y=my_string_of_float) ?(string_of_y2=my_string_of_float)
   let stacked = [| stacked_y1 ; stacked_y2 |] in
   let y_label_grid = if show_rate then y_label ^"/"^ (x_label_for_rate |? x_label) else y_label in
   (* build iter and map from fold *)
-  let iter_datasets f = fold.fold (fun _prev label prim get -> f label prim get) ()
-  and map_datasets f = List.rev @@ fold.fold (fun prev label prim get -> (f label prim get) :: prev) []
+  let iter_datasets f = fold.fold (fun _prev color label prim get -> f color label prim get) ()
+  and map_datasets f = List.rev @@ fold.fold (fun prev color label prim get -> (f color label prim get) :: prev) []
   and rate_of_vy vy = if show_rate then vy /. vx_step else vy in
   (* Graph geometry in pixels *)
   let max_label_length = y_tick_spacing *. 0.9 in
@@ -201,7 +201,7 @@ let xy_plot ?(string_of_y=my_string_of_float) ?(string_of_y2=my_string_of_float)
     else
       (* sum the Ys *)
       (fun i c -> max_vy.(pi).(i) <- max_vy.(pi).(i) +. c) in
-  iter_datasets (fun label prim get ->
+  iter_datasets (fun _color label prim get ->
     if not prim then label2 := Some label ;
     let pi = if prim then 0 else 1 in
     for i = 0 to nb_vx-1 do set_max pi i (get i |> rate_of_vy) done) ;
@@ -232,7 +232,7 @@ let xy_plot ?(string_of_y=my_string_of_float) ?(string_of_y2=my_string_of_float)
   (* per chart infos *)
   let tot_vy = Hashtbl.create 11
   and tot_vys = ref 0. in
-  iter_datasets (fun lbl prim get ->
+  iter_datasets (fun _color lbl prim get ->
     if prim then for i = 0 to nb_vx-1 do
       let vy = get i in
       tot_vys := !tot_vys +. vy ;
@@ -251,12 +251,11 @@ let xy_plot ?(string_of_y=my_string_of_float) ?(string_of_y2=my_string_of_float)
       (if dvx > 0. then "&lt;br/&gt;Avg:&nbsp;"^ (string_of_y (tot /. dvx)) ^ y_label_grid else "")
     ) else "" in
   (* The SVG *)
-  let path_of_dataset label prim get =
+  let path_of_dataset color label prim get =
     let pi = if prim then 0 else 1 in
     let is_stacked = stacked.(pi) <> NotStacked && prim in
     let label_str = string_of_label label in
     let label_js = js_of_label label in
-    let color = Color.random_of_string label_str in
     let stroke = Color.to_html color in
       path ~stroke:(if is_stacked then "none" else stroke)
        ~stroke_width:(if is_stacked then 0.7 else 1.)

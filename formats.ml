@@ -5,17 +5,20 @@ open Batteries
 type t = {
   to_value : string -> float ;
   to_label : float -> string ;
+  name : string ;
 }
 
 let numeric = {
+  name = "numeric" ;
   to_value = float_of_string ;
-  to_label = Html.my_string_of_float
+  to_label = Html.my_string_of_float ;
 }
 
 (* TODO: reset this state after each axis... *)
 let last_s = ref ""
 
 let timestamp = {
+  name = "timestamp" ;
   to_value = float_of_string ;
   to_label = fun t ->
     let open Unix in
@@ -51,3 +54,6 @@ let timestamp = {
 
 let reset_all_states () = last_s := ""
 
+
+let all =
+  [ numeric ; timestamp ]

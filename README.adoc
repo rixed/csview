@@ -159,6 +159,33 @@ after), per graph or global.
 
 A way to say when to consider a y value depending on other fields.
 
-Very complex and doable on the CSV directly. Also, would likely disprove the
+Quite complex and doable on the CSV directly. Also, would likely disprove the
 assumption that a CSV line can be read from any block.
+
+TODO: fix this limitation that a line must fit within a block, that is
+probably desirable anyway, and then we could filters.
+
+== AutoSaving configuration
+
+Use case: We devise the perfect command line to represent some data in some
+file. When the file is updated, we do not want to have to remember it.
+Ideally, the same configuration can be figured out from the config file name.
+But there are cases when we can devise several layout for a single CSV file,
+all worth saving. In that case using the alternate file name for saving allows
+to store several representations for the same file.
+
+Also, a single graph may be composed of several files.
+
+So what we really want to save are the graphs themselves. Saving also fields
+info on a per file conig can also make sense, though (so that we already know
+the formatters, for instance).
+
+So we want to save:
+
+- given an (alternative) file name, the label, fmt, color, etc, of each field
+  (a field array)
+- given the title of a graph, the file array and labels.
+- given the title of the page, the list of graphs. (for dashboards)
+
+
 

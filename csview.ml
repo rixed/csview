@@ -99,10 +99,12 @@ let get_graph oc params =
           let y, _ = Read_csv.extract_field line file.separator 0 field.index field.fmt.Formats.to_value in
           y in
         let prev' = Array.fold_left (fun prev field ->
-          f prev field.label true (* left Y-axis *) (field_getter field))
+          let color = field.color |? Color.random_of_string field.label in
+          f prev color field.label true (* left Y-axis *) (field_getter field))
           prev file.y1_fields in
         let prev' = Array.fold_left (fun prev field ->
-          f prev field.label false (* right Y-axis *) (field_getter field))
+          let color = field.color |? Color.random_of_string field.label in
+          f prev color field.label false (* right Y-axis *) (field_getter field))
           prev' file.y2_fields in
         (* TODO: the annotations *)
         for_all_fields (f_idx+1) prev') in

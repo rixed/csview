@@ -30,7 +30,7 @@ distclean: clean
 	$(RM) *.byte *.opt
 
 clear:
-	sed -i.bak -e 's/[ 	]\+$$//' $(wildcard *.adoc)
+	sed -i.bak -e 's/[ 	]\+$$//' $(wildcard *.adoc) $(wildcard *.ml)
 
 install: csview
 	install -D $(DESTDIR)$(prefix)/bin
@@ -47,7 +47,7 @@ reinstall: uninstall install
 all_tests.ml: TestEnv.ml read_csv.ml config.ml
 	$(QTEST) --shuffle --preamble 'open Batteries;; open TestEnv' -o $@ extract $^
 
-all_tests.opt: TestEnv.cmx read_csv.cmx config.cmx all_tests.ml
+all_tests.opt: TestEnv.cmx color.cmx formats.cmx read_csv.cmx config.cmx all_tests.ml
 	$(OCAMLOPT) -o $@ $(SYNTAX) -package "$(REQUIRES) qcheck" -linkpkg $(OCAMLOPTFLAGS) $^
 
 check: all_tests.opt

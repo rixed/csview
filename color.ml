@@ -12,6 +12,26 @@ let to_html c =
       (fun oc f ->
         Printf.fprintf oc "%02x" (int_of_float (255.*.f)))) c
 
+let to_string = to_html
+let of_string s =
+  let from_char c0 c =
+    Char.code c - Char.code c0 in
+  let of_char c =
+    if c >= '0' && c <= '9' then from_char '0' c
+    else if c >= 'a' && c <= 'f' then from_char 'a' c
+    else if c >= 'A' && c <= 'F' then from_char 'A' c
+    else invalid_arg s in
+  let get i =
+    let hi = of_char s.[i]
+    and lo = of_char s.[i+1] in
+    float_of_int (hi*16 + lo) /. 256. in
+  if String.length s = 7 && s.[0] = '#' then
+    [| get 1 ; get 3 ; get 5 |]
+  else
+    invalid_arg s (* TODO: other format *)
+
+let print fmt c = Printf.fprintf fmt "%s" (to_string c)
+
 let get s v =
   let rec aux (start, start_col) = function
     | [] -> white
