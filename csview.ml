@@ -5,6 +5,28 @@ let debug = false
 
 let port = 28019
 
+(* Perf measurements *)
+let times = Hashtbl.create 7
+let with_timing n f =
+  let start = Unix.gettimeofday () in
+  let ret = f () in
+  let stop = Unix.gettimeofday () in
+  let dt = stop -. start in
+  Hashtbl.modify_opt n (function
+      | None -> Some (dt, 1)
+      | Some (dt0, n) -> Some (dt0 +. dt, n+1)
+    ) times ;
+  ret
+
+let () =
+  Sys.(set_signal sigint (Signal_handle (fun _ -> exit 0))) ;
+  at_exit (fun () ->
+    Hashtbl.iter (fun k (dt, n) ->
+        Printf.printf "Time spent %s: %fs (%fs x %d calls)\n"
+          k dt (dt /. (float_of_int n)) n
+      ) times)
+
+
 (* We run in our own thread already thanks to [establish_server] so there
  * is no need for further ado.
  * Also, this is not the faster parser around but parsing an average HTTP
@@ -90,7 +112,9 @@ let get_graph oc params =
         let file = g.files.(f_idx) in
         (* We cannot open the file earlier because this is a forking server and
          * we do not want to share the file offsets with other processes *)
-        let data = Read_csv.read_all file.fd file.x_field.index file.separator file.x_field.fmt.Formats.to_value file.block_size file.size n t1 t2 in
+        let data =
+          with_timing "reading data" (fun () ->
+            Read_csv.read_all file.fd file.x_field.index file.separator file.x_field.fmt.Formats.to_value file.block_size file.size n t1 t2)  in
         (* data is an array of n data points, where each data point is:
            ts : float * line : string *)
         (* Let's forget about what we asked and use the actual number instead: *)
@@ -130,15 +154,16 @@ let get_graph oc params =
         fmt1, fmt2
       ) (None, None) g.files in
   let svg =
-    Chart.xy_plot ~string_of_x:g.files.(0).x_field.fmt.Formats.to_label
-                  ?string_of_y ?string_of_y2
-                  ~svg_width:(float_of_int (g.width |? global.default_width))
-                  ~svg_height:(float_of_int (g.height |? global.default_height))
-                  ~axis_font_size:g.font_size
-                  ~stacked_y1:g.y1_stacked
-                  ~stacked_y2:g.y2_stacked
-                  ~force_show_0:g.force_show_0
-                  g.x_label g.y1_label t1 vx_step n fold in
+    with_timing "building SVG" (fun () ->
+      Chart.xy_plot ~string_of_x:g.files.(0).x_field.fmt.Formats.to_label
+                    ?string_of_y ?string_of_y2
+                    ~svg_width:(float_of_int (g.width |? global.default_width))
+                    ~svg_height:(float_of_int (g.height |? global.default_height))
+                    ~axis_font_size:g.font_size
+                    ~stacked_y1:g.y1_stacked
+                    ~stacked_y2:g.y2_stacked
+                    ~force_show_0:g.force_show_0
+                    g.x_label g.y1_label t1 vx_step n fold) in
   let msg = http_msg_of_svg svg in
   respond oc msg
 
@@ -190,7 +215,7 @@ let on_all_http_msg oc msg =
         "HTTP/1.0 404 Go away you bozo\r\n\
          Content-Length:0\r\n\r\n%!")
   | _ -> (* ignore that bozo *) ()
-    
+
 
 let on_all_err err =
   Printf.eprintf "Error: %a\n"

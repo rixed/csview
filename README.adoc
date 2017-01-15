@@ -195,7 +195,11 @@ color, another for label, etc...
 
 == Legend and overlay
 
-TODO
+TODO: JS as in clopinet to highlight part of the graph when hovering its label
+in the legend.
 
+== Annotations
+
+TODO
 
 
