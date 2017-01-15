@@ -102,7 +102,12 @@ let get_graph oc params =
   let g = !graphs.(gi) in
   let t1 = default g.files.(0).first_x (fun () -> get "t1" |> float_of_string)
   and t2 = default g.files.(0).last_x (fun () -> get "t2" |> float_of_string)
-  and n = default 100 (fun () -> get "n" |> int_of_string)
+  and n = default 100 (fun () -> get "n" |> int_of_string) in
+  let data =
+    with_timing "reading data" (fun () ->
+      Array.map (fun file ->
+          Read_csv.read_all file.fd file.x_field.index file.separator file.x_field.fmt.Formats.to_value file.block_size file.size n t1 t2
+        ) g.files)
   in
   (* The fold function is supposed to accumulate over all datasets *)
   let fold = { Chart.fold = fun f init ->
@@ -110,16 +115,10 @@ let get_graph oc params =
     let rec for_all_fields f_idx prev  =
       if f_idx >= Array.length g.files then prev else (
         let file = g.files.(f_idx) in
-        (* We cannot open the file earlier because this is a forking server and
-         * we do not want to share the file offsets with other processes *)
-        let data =
-          with_timing "reading data" (fun () ->
-            Read_csv.read_all file.fd file.x_field.index file.separator file.x_field.fmt.Formats.to_value file.block_size file.size n t1 t2)  in
-        (* data is an array of n data points, where each data point is:
+        (* data is an array of nb_fields arrays of n data points, where each data point is:
            ts : float * line : string *)
-        (* Let's forget about what we asked and use the actual number instead: *)
         let field_getter field i =
-          let _, line = data.(i) in
+          let _, line = data.(f_idx).(i) in
           let y, _ = Read_csv.extract_field line file.separator 0 field.index field.fmt.Formats.to_value in
           y in
         let prev' = Array.fold_left (fun prev field ->
@@ -231,7 +230,8 @@ let server ic' oc =
       (HttpParser.P.print_result CodecHttp.Msg.print) parser_res ;
     match parser_res with
     | Ok (msg, stream') ->
-      on_all_http_msg oc msg ;
+      with_timing "answering queries" (fun () ->
+        on_all_http_msg oc msg) ;
       loop stream'
     | Bad err -> on_all_err err in
   loop (make_stream ic)
