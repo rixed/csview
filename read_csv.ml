@@ -44,16 +44,11 @@ let extract_field str sep line_start fn fos =
   String.sub str field_start (field_stop - field_start) |> fos,
   field_stop
 
-(* returns -1,0 or -1, as well as the offset in the block where the line starts
- * and the value for the time. Raises Not_found if we cannot find any value of
- * t.  Only looks at the first line within the block. *)
-let cmp_block_begin str fn sep fos t =
+(* Returns the fn field of the first line of that block. *)
+let get_block_begin str fn sep fos =
   (* Look for the first line start *)
   let line_start = String.index str '\n' + 1 in
-  let t', _ =
-    extract_field str sep line_start fn fos in
-  if debug then Printf.eprintf "found ts=%f @ %d\n%!" t' line_start ;
-  Float.compare t t'
+  extract_field str sep line_start fn fos |> fst
 
 (* Same as above but look for all values in that block ; returns the offset of
  * the line that's the closest to the value we are looking for. It's OK if
@@ -95,25 +90,30 @@ let find_line_in_block str fn sep fos t =
  * Since we look only at the first t of each block, the returned offset
  * is close to the target but may be after or even before (if the best
  * approx was the first TS of the next block). *)
-let rec find_block fd fn sep fos t bs ofs_start ofs_stop =
-  if ofs_stop - ofs_start <= bs then ofs_start else (
-    let ofs_mid = (ofs_stop + ofs_start) / 2 in
+let rec find_block fd fn sep fos t bs ofs_start t_start ofs_stop t_stop =
+  let delta_ofs = ofs_stop - ofs_start in
+  if delta_ofs <= bs then ofs_start else (
+    let delta_t = t_stop -. t_start in
+    let ofs_mid = ofs_start + int_of_float ((t -. t_start) *.
+                  float_of_int delta_ofs /. delta_t) in
+    let ofs_mid = max (ofs_start + bs) ofs_mid in
+    let ofs_mid = min (ofs_stop - bs) ofs_mid in
     assert (ofs_mid >= ofs_start) ;
+    assert (ofs_mid < ofs_stop) ;
     let block_size = min bs (ofs_stop - ofs_mid) in
     assert (ofs_mid + block_size <= ofs_stop) ;
     let str = read_at fd ofs_mid block_size in
-    match cmp_block_begin str fn sep fos t with
-    | -1 ->
+    let t_mid = get_block_begin str fn sep fos in
+    if t < t_mid then (
       if debug then Printf.eprintf "t <, %d..%d\n%!" ofs_start ofs_mid ;
-      find_block fd fn sep fos t bs ofs_start ofs_mid
-    | 1 ->
+      find_block fd fn sep fos t bs ofs_start t_start ofs_mid t_mid
+    ) else if t > t_mid then (
       if debug then Printf.eprintf "t >, %d..%d\n%!" ofs_mid ofs_stop ;
-      find_block fd fn sep fos t bs ofs_mid ofs_stop
-    | _ ->
-      ofs_mid)
+      find_block fd fn sep fos t bs ofs_mid t_mid ofs_stop t_stop
+    ) else ofs_mid (* eq *))
 
-let find_line fd fn sep fos t bs sz =
-  let approx_ofs = find_block fd fn sep fos t bs 0 sz in
+let find_line fd fn sep fos t bs sz t_first t_last =
+  let approx_ofs = find_block fd fn sep fos t bs 0 t_first sz t_last in
   (* What we are looking for may be in the previous or next block, so let's
    * read 3 blocks: *)
   let start_ofs = max 0 (approx_ofs - bs)
@@ -220,17 +220,16 @@ let update_file_info f =
  * have indices evenly spaced in time (not in the index space!) therefore we
  * could also return less than n indices if we have more than n times in
  * between t1 and t2 but they are clustered. *)
-(* FIXME: we do not use the info that t' = t + dt / should be useful when bisecting! aka, pass a hint to find_line! *)
-let read_all fd fn sep fos bs sz n t1 t2 =
+let read_all fd fn sep fos bs sz t_first t_last n t1 t2 =
   if n = 0 || t1 > t2 then [||] else
   if n = 1 then let tmid = (t2 -. t1) *. 0.5 in
-    [| find_line fd fn sep fos tmid bs sz |] else
+    [| find_line fd fn sep fos tmid bs sz t_first t_last |] else
   (* Impossible to use fancy algorithm since times in ts are not necessarily
    * evenly spaced :( *)
   let dt = (t2 -. t1) /. float_of_int (n-1) in
   let rec loop n' prev t =
     if n' >= n then Array.of_list (List.rev prev) else
-    let p = find_line fd fn sep fos t bs sz in
+    let p = find_line fd fn sep fos t bs sz t_first t_last in
     loop (n'+1) (p::prev) (t +. dt) in
   loop 0 [] t1
 
