@@ -187,5 +187,15 @@ So we want to save:
 - given the title of a graph, the file array and labels.
 - given the title of the page, the list of graphs. (for dashboards)
 
+TODO: rewrite.
+
+Also, a Chart.Source with label, color, stroke width, etc, used by
+Config.field, and passed in the fold iteratof instead of one parameter for
+color, another for label, etc...
+
+== Legend and overlay
+
+TODO
+
 
 
