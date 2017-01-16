@@ -135,7 +135,7 @@ function doZoom() {
 
   var mid_t = (zoomG.t1 + zoomG.t2) * 0.5;
   var dt = (zoomG.t2 - zoomG.t1) * 0.5;
-  var zoomRatio = 0.0001;
+  var zoomRatio = 0.001;
   var new_dt = zoom > 0 ?
     dt / (1 + zoom * zoomRatio) :
     dt * (1 - zoom * zoomRatio);
@@ -144,4 +144,3 @@ function doZoom() {
   zoom = 0;
   zoomG.obj.src = zoomG.src();
 }
-
