@@ -205,7 +205,7 @@ let on_all_http_msg oc msg =
     | "/favicon.ico" | "/csview.js" | "/style.css" ->
       http_msg_of_file ("./static/"^ url.CodecUrl.path) |>
       respond oc
-    | "/index.html" ->
+    | "/" | "/index.html" ->
       make_index_html params |>
       http_msg_of_html |>
       respond oc
