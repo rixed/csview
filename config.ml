@@ -17,10 +17,12 @@ type file = {
   mutable confname : string ;
   mutable fd : Unix.file_descr ;
   mutable separator : char ;
+  mutable has_header : bool ;
   mutable x_field : field ;
   mutable y1_fields : field array ;
   mutable y2_fields : field array ;
   mutable annot_fields : field array ;
+  mutable data_start : int ;  (* not 0 if has_header *)
   mutable size : int ;
   mutable first_x : float ;
   mutable last_x : float ;
@@ -124,6 +126,7 @@ let save_file_config confdir file =
     Printf.fprintf oc "--separator\n%c\n\
                        --block-size\n%d\n"
       file.separator file.block_size ;
+    if file.has_header then Printf.fprintf oc "--has-header\n" ;
     ) ;
   let file_confdir = confdir ^"/"^ fname ^".fields" in
   save_field_config file_confdir file.x_field ;
@@ -250,13 +253,13 @@ let global_options = [| {
  * But for stacked which cannot be compared by address. *)
 
 let default_title = "title" and default_x_label = "X"
-and default_y1_label = "Y" and default_y2_label = "Y"
+and default_y_label = "Y"
 
 let last_field = ref None
 
 let make_new_field index = {
   index ; label = "label" ;
-  fmt = Formats.numeric ;
+  fmt = Formats.numeric "" ;
   fmt_was_set = false ;
   color = None ;
   filled = false ; opacity = 1.
@@ -295,9 +298,11 @@ let try_parse_option n v opts =
         match opt.has_param, v with
         | true, Some v ->
           Some (opt, v)
+        | true, None ->
+          Printf.eprintf "Missing parameter for option '%s'\n" n ;
+          exit ~-1
         | false, _ ->
           Some (opt, "true")
-        | _ -> None
       else if not opt.has_param &&
         String.starts_with n "no" &&
         Array.exists ((=) (chop_dashes (chop n 2))) opt.names then
@@ -338,12 +343,13 @@ let make_new_file fname =
   {
     fname ; confname = "" ;
     separator = ',' ;
+    has_header = false ;
     fd = Unix.stdin ; (* typechecks *)
     x_field = make_new_field ~-1 ;
     y1_fields = [| |] ;
     y2_fields = [| |] ;
     annot_fields = [| |] ;
-    size = -1 ;
+    data_start = 0; size = -1 ;
     first_x = 0. ; last_x = 0. ;
     block_size = 1024 ;
   }
@@ -352,8 +358,8 @@ let make_new_graph () = {
   title = default_title ;
   files = [| |] ;
   x_label = default_x_label ;
-  y1_label = default_y1_label ;
-  y2_label = default_y2_label ;
+  y1_label = default_y_label ;
+  y2_label = default_y_label ;
   y1_stacked = Chart.NotStacked ;
   y2_stacked = Chart.NotStacked ;
   x_start = None ; x_stop  = None ;
@@ -418,7 +424,7 @@ and graph_options = [| {
   descr = "Y axis label" ;
   doc = "" ;
   setter = (fun s ->
-    let renew g = g.y1_label != default_y1_label in
+    let renew g = g.y1_label != default_y_label in
     (get_current_graph renew).y1_label <- s) ;
 } ; {
   names = [| "y2-label" |] ;
@@ -426,7 +432,7 @@ and graph_options = [| {
   descr = "right-Y axis label" ;
   doc = "" ;
   setter = (fun s ->
-    let renew g = g.y2_label != default_y2_label in
+    let renew g = g.y2_label != default_y_label in
     (get_current_graph renew).y2_label <- s) ;
 } ; {
   names = [| "stacked" ; "y1-stacked" |] ;
@@ -511,11 +517,22 @@ and file_options = [| {
       invalid_arg "separator must be a single character" ;
     (get_current_file ()).separator <- s.[0]) ;
 } ; {
+  names = [| "has-header" ; "header" |] ;
+  has_param = false ;
+  descr = "Does the first line of the CSV has labels" ;
+  doc = "" ;
+  setter = fun s ->
+    (get_current_file ()).has_header <- bool_of_string s
+} ; {
   names = [| |] ;
   has_param = false ;
   descr = "CSV file" ;
   doc = "" ;
   setter = fun s ->
+    (try (* Check this is a file *)
+      let ic = Unix.(openfile s [ O_RDONLY ] 0o644) in
+      Unix.close ic
+    with _ -> raise Not_found) ;
     let g = get_current_graph no_renew in
     let f = make_new_file s in
     load_file_config global.confdir f ; (* may not find anything if we use a confname ; we will try again later *)
@@ -586,7 +603,7 @@ and field_options = [| {
     let f = get_current_x_field () in
     if f.index <> ~-1 then
       raise (ParseError "Set twice the X field") ;
-    f.index <- int_of_string s ; (* TODO: index of string that validates >= 0 *)
+    f.index <- (int_of_string s - 1) ; (* TODO: index of string that validates >= 0 *)
     load_field_config global.confdir (get_current_file ()) f.index
 } ; {
   names = [| "y" ; "y1" |] ;
@@ -594,7 +611,7 @@ and field_options = [| {
   descr = "field number of the next value reported on the left Y axis" ;
   doc = "" ;
   setter = fun s ->
-    let idx = int_of_string s in
+    let idx = int_of_string s - 1 in
     let file = get_current_file () in
     file.y1_fields <- new_field file.y1_fields idx ;
     load_field_config global.confdir (get_current_file ()) idx
@@ -604,7 +621,7 @@ and field_options = [| {
   descr = "field number of the next value reported on the right Y axis" ;
   doc = "" ;
   setter = fun s ->
-    let idx = int_of_string s in
+    let idx = int_of_string s - 1 in
     let file = get_current_file () in
     file.y2_fields <- new_field file.y2_fields idx ;
     load_field_config global.confdir (get_current_file ()) idx
@@ -614,7 +631,7 @@ and field_options = [| {
   descr = "field number of the next value to use as annotation" ;
   doc = "" ;
   setter = (fun s ->
-    let idx = int_of_string s in
+    let idx = int_of_string s - 1 in
     let file = get_current_file () in
     file.annot_fields <- new_field file.annot_fields idx) ;
 } ; {
@@ -645,11 +662,19 @@ and field_options = [| {
 } ; {
   names = [| "format" |] ;
   has_param = true ;
-  descr = "numeric|timestamp|date(...a la strftime...)" ;
+  descr = "numeric|timestamp|date(...a la strptime...)" ;
   doc = "" ;
   setter = fun s ->
+    let len = String.length in
     let f = get_last_field () in
-    f.fmt <- List.find (fun f -> f.Formats.name = s) Formats.all ;
+    f.fmt <- List.find_map (fun (fmtname, f) ->
+      if s = fmtname then Some (f "") else
+      if String.starts_with s fmtname &&
+         s.[len fmtname] = '(' &&
+         s.[len s - 1] = ')' then
+        Some (f (String.sub s (len fmtname + 1)
+                              (len s - len fmtname - 2)))
+      else None) Formats.all ;
     f.fmt_was_set <- true
 } |]
 
@@ -676,6 +701,15 @@ let other_options = [| {
 (*
  * Command Line
  *)
+
+let iter_all_files gs f =
+  Array.iter (fun g ->
+    Array.iter f g.files) gs
+let iter_all_fields file f =
+  f file.x_field ;
+  Array.iter f file.y1_fields ;
+  Array.iter f file.y2_fields ;
+  Array.iter f file.annot_fields
 
 let parse_args args =
   (* We want the global and runtime options to be parsed first, and be
@@ -713,6 +747,14 @@ let parse_args args =
     | Some arg ->
       Printf.eprintf "Cannot parse '%s'\n" arg ;
       exit 1) args ;
+  (* Arrange configuration *)
+  iter_all_files !graphs (fun file ->
+    let next_unused_field = ref 0 in
+    iter_all_fields file (fun field ->
+      if field.index = -1 then (
+        field.index <- !next_unused_field ;
+        incr next_unused_field))) ;
+  (* Save configuration *)
   if global.save_config then (
     Printf.eprintf "Saving the configuration\n" ;
     save_global_config global.confdir global ;

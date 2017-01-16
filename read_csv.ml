@@ -105,15 +105,15 @@ let rec find_block fd fn sep fos t bs ofs_start t_start ofs_stop t_stop =
     let str = read_at fd ofs_mid block_size in
     let t_mid = get_block_begin str fn sep fos in
     if t < t_mid then (
-      if debug then Printf.eprintf "t <, %d..%d\n%!" ofs_start ofs_mid ;
+      if debug then Printf.eprintf "t <, %d..%d\n" ofs_start ofs_mid ;
       find_block fd fn sep fos t bs ofs_start t_start ofs_mid t_mid
     ) else if t > t_mid then (
-      if debug then Printf.eprintf "t >, %d..%d\n%!" ofs_mid ofs_stop ;
+      if debug then Printf.eprintf "t >, %d..%d\n" ofs_mid ofs_stop ;
       find_block fd fn sep fos t bs ofs_mid t_mid ofs_stop t_stop
     ) else ofs_mid (* eq *))
 
-let find_line fd fn sep fos t bs sz t_first t_last =
-  let approx_ofs = find_block fd fn sep fos t bs 0 t_first sz t_last in
+let find_line fd fn sep fos t bs ds sz t_first t_last =
+  let approx_ofs = find_block fd fn sep fos t bs ds t_first sz t_last in
   (* What we are looking for may be in the previous or next block, so let's
    * read 3 blocks: *)
   let start_ofs = max 0 (approx_ofs - bs)
@@ -124,11 +124,12 @@ let find_line fd fn sep fos t bs sz t_first t_last =
   try (
     let line_stop = String.index_from str line_start '\n' in
     (* we want the end of line char to be present as a delimiter *)
-    t_line, String.sub str line_start (line_stop - line_start + 1)
+    start_ofs + line_start,
+    (t_line, String.sub str line_start (line_stop - line_start + 1))
   ) with Not_found ->
     Printf.eprintf "Cannot find line, fn=%d, t=%f, bs=%d, sz=%d,\
                     looking for newline from pos %d\n\
-                    We just read from %d to %d, the close block was at %d\n%!"
+                    We just read from %d to %d, the close block was at %d\n"
       fn t bs sz line_start start_ofs stop_ofs approx_ofs ;
     raise Not_found
 
@@ -154,64 +155,81 @@ let rec get_last_x fd sz bs sep fn fos =
   (* We discard incomplete last line if any *)
   match String.rindex str '\n' with
   | exception Not_found when bs' = bs ->
-    if debug then Printf.eprintf "can't find nl\n%!" ;
+    if debug then Printf.eprintf "can't find nl\n" ;
     (* try with bigger block size *)
     assert (bs < max_line_size_ever) ;
     get_last_x fd sz (bs * 2) sep fn fos
   | eol ->
-    if debug then Printf.eprintf "found eol at %d\n%!" eol ;
+    if debug then Printf.eprintf "found eol at %d\n" eol ;
     (* we must found the beginning of that line *)
     (match String.rindex_from str (eol-1) '\n' with
     | exception (Invalid_argument _ (* eol-1 was -1 *) | Not_found) ->
       if bs' < sz then (
-        if debug then Printf.eprintf "can't find sol\n%!" ;
+        if debug then Printf.eprintf "can't find sol\n" ;
         assert (bs < max_line_size_ever) ;
         get_last_x fd sz (bs * 2) sep fn fos
       ) else (
         (* we are at the beginning of the file *)
-        if debug then Printf.eprintf "we are at beginning of file\n%!" ;
+        if debug then Printf.eprintf "we are at beginning of file\n" ;
         extract_field str sep 0 fn fos |> fst
       )
     | last_eol ->
       let sol = last_eol + 1 in
-      if debug then Printf.eprintf "found sol at %d\n%!" sol ;
+      if debug then Printf.eprintf "found sol at %d\n" sol ;
       extract_field str sep sol fn fos |> fst)
 
 (*$= get_last_x & ~printer:string_of_float
    1483380648. (get_last_x test_data_1_csv 11020 4096 ',' 0 float_of_string)
  *)
 
-let rec get_first_x fd sz bs sep fn fos =
+let rec get_first_x fd ds sz bs sep fn fos =
   let bs' = min sz bs in
-  let str = read_at fd 0 bs' in
+  let str = read_at fd ds bs' in
   try extract_field str sep 0 fn fos |> fst
   with Not_found ->
     assert (bs < max_line_size_ever) ;
-    get_first_x fd sz (bs * 2) sep fn fos
+    get_first_x fd ds sz (bs * 2) sep fn fos
 
 (*$= get_first_x & ~printer:string_of_float
-   1483347348. (get_first_x test_data_1_csv 11020 4096 ',' 0 float_of_string)
+   1483347348. (get_first_x test_data_1_csv 0 11020 4096 ',' 0 float_of_string)
  *)
 
 (* Refresh a config file info *)
 let update_file_info f =
   let open Config in
-  Printf.eprintf "  Check file %s...\n%!" f.fname ;
+  Printf.eprintf "  Check file %s...\n" f.fname ;
   f.fd <- Unix.(openfile f.fname [O_RDONLY; O_CLOEXEC] 0o644) ;
   let sz = file_size f.fd in
   if sz <> f.size then (
     f.size <- sz ;
-    Printf.eprintf "    size is now %d\n%!" sz ;
+    Printf.eprintf "    size is now %d\n" sz ;
+    if f.has_header then (
+      let str = read_at f.fd 0 f.block_size in
+      f.data_start <- String.index str '\n' + 1 ;
+      Printf.eprintf "    data starts at %d\n" f.data_start ;
+      let labels = String.sub str 0 (f.data_start - 1) |>
+                   String.split_on_char f.separator |>
+                   Array.of_list in
+      (* set the label for all fields with default label *)
+      if f.x_field.label == Config.default_x_label then
+        f.x_field.label <- labels.(f.x_field.index) ;
+      let set_label field =
+        if field.label == Config.default_y_label then
+          field.label <- labels.(field.index) in
+      Array.iter set_label f.y1_fields ;
+      Array.iter set_label f.y2_fields ;
+      Array.iter set_label f.annot_fields
+    ) ;
     (try
       f.last_x <-
         get_last_x f.fd f.size f.block_size f.separator f.x_field.index f.x_field.fmt.Formats.to_value ;
-      Printf.eprintf "    last x is now %f\n%!" f.last_x
+      Printf.eprintf "    last x is now %f\n" f.last_x
      with Not_found -> ()) ;
     if f.first_x = 0. then
       (try
         f.first_x <-
-          get_first_x f.fd f.size f.block_size f.separator f.x_field.index f.x_field.fmt.Formats.to_value ;
-        Printf.eprintf "    first x is now %f\n%!" f.first_x
+          get_first_x f.fd f.data_start f.size f.block_size f.separator f.x_field.index f.x_field.fmt.Formats.to_value ;
+        Printf.eprintf "    first x is now %f\n" f.first_x
        with Not_found -> ()) ;
   )
 
@@ -220,16 +238,16 @@ let update_file_info f =
  * have indices evenly spaced in time (not in the index space!) therefore we
  * could also return less than n indices if we have more than n times in
  * between t1 and t2 but they are clustered. *)
-let read_all fd fn sep fos bs sz t_first t_last n t1 t2 =
+let read_all fd fn sep fos bs ds sz (t_first:float) t_last n t1 t2 =
   if n = 0 || t1 > t2 then [||] else
   if n = 1 then let tmid = (t2 -. t1) *. 0.5 in
-    [| find_line fd fn sep fos tmid bs sz t_first t_last |] else
+    [| find_line fd fn sep fos tmid bs ds sz t_first t_last |> snd |] else
   (* Impossible to use fancy algorithm since times in ts are not necessarily
    * evenly spaced :( *)
   let dt = (t2 -. t1) /. float_of_int (n-1) in
-  let rec loop n' prev t =
-    if n' >= n then Array.of_list (List.rev prev) else
-    let p = find_line fd fn sep fos t bs sz t_first t_last in
-    loop (n'+1) (p::prev) (t +. dt) in
-  loop 0 [] t1
+  let rec loop i prev_ofs prev_t prev t =
+    if i >= n then Array.of_list (List.rev prev) else
+    let ofs, p = find_line fd fn sep fos t bs prev_ofs sz prev_t t_last in
+    loop (i+1) ofs t (p::prev) (t +. dt) in
+  loop 0 ds t_first [] t1
 

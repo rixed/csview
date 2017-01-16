@@ -174,7 +174,7 @@ let xy_plot ?(string_of_y=my_string_of_float) ?(string_of_y2=my_string_of_float)
             fold =
   let vx_min = vx_min_unscaled *. scale_vx
   and vx_step = vx_step_unscaled *. scale_vx
-  and vx_max_unscaled = vx_min_unscaled +. (float_of_int nb_vx -. 0.5) *. vx_step_unscaled in
+  and _vx_max_unscaled = vx_min_unscaled +. (float_of_int nb_vx -. 0.5) *. vx_step_unscaled in
   let force_show_0 = if stacked_y1 = StackedCentered || stacked_y2 = StackedCentered then true else force_show_0 in
   let stacked = [| stacked_y1 ; stacked_y2 |] in
   let y_label_grid = if show_rate then y_label ^"/"^ (x_label_for_rate |? x_label) else y_label in
@@ -241,7 +241,7 @@ let xy_plot ?(string_of_y=my_string_of_float) ?(string_of_y2=my_string_of_float)
     done) ;
   let dvx = vx_max -. vx_min in
   Formats.reset_all_states () ;
-  let avg_vy =
+  let _avg_vy =
     if dvx > 0. then
       (string_of_y (!tot_vys /. dvx)) ^ y_label_grid
     else "none" in
@@ -298,7 +298,7 @@ let xy_plot ?(string_of_y=my_string_of_float) ?(string_of_y2=my_string_of_float)
       legend_font_size *. 0.6 *. float_of_int (String.length label_str) in
     let row_width = legend_box_width +. label_width in
     let width = max width row_width in
-    let label_js = js_of_label label in
+    let _label_js = js_of_label label in
     let nb_y = float_of_int (nb_y1 + nb_y2) in
     let y = outer_margin_vert +. inner_margin_vert +. legend_row_height *. nb_y in
     let s = g [
