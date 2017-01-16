@@ -162,7 +162,7 @@ let get_graph oc params =
                     ~stacked_y1:g.y1_stacked
                     ~stacked_y2:g.y2_stacked
                     ~force_show_0:g.force_show_0
-                    g.x_label g.y1_label t1 vx_step n fold) in
+                    g.files.(0).x_field.label g.y1_label t1 vx_step n fold) in
   let msg = http_msg_of_svg svg in
   respond oc msg
 

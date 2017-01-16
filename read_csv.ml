@@ -211,14 +211,9 @@ let update_file_info f =
                    String.split_on_char f.separator |>
                    Array.of_list in
       (* set the label for all fields with default label *)
-      if f.x_field.label == Config.default_x_label then
-        f.x_field.label <- labels.(f.x_field.index) ;
-      let set_label field =
-        if field.label == Config.default_y_label then
-          field.label <- labels.(field.index) in
-      Array.iter set_label f.y1_fields ;
-      Array.iter set_label f.y2_fields ;
-      Array.iter set_label f.annot_fields
+      Config.iter_fields f (fun _is_x field ->
+        if field.label == Config.default_label then
+          field.label <- labels.(field.index))
     ) ;
     (try
       f.last_x <-

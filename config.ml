@@ -32,7 +32,6 @@ type file = {
 type graph = {
   mutable title : string ;
   mutable files : file array ;
-  mutable x_label : string ;
   mutable y1_label : string ;
   mutable y2_label : string ;
   mutable y1_stacked : Chart.stacked ;
@@ -158,12 +157,11 @@ let print_opt_int oc label = function
 
 let save_graph_config confdir graph =
   with_save_file (confdir ^"/graphs") (to_fname graph.title) (fun oc ->
-    Printf.fprintf oc "--x-label\n%s\n\
-                       --y1-label\n%s\n\
+    Printf.fprintf oc "--y1-label\n%s\n\
                        --y2-label\n%s\n\
                        %s\n%s\n\
                        --font-size\n%f\n"
-      graph.x_label graph.y1_label graph.y2_label
+      graph.y1_label graph.y2_label
       (string_of_stacked "y1" graph.y1_stacked)
       (string_of_stacked "y2" graph.y2_stacked)
       graph.font_size ;
@@ -252,13 +250,14 @@ let global_options = [| {
 (* We create a new graph when we set again a field that has already been set.
  * But for stacked which cannot be compared by address. *)
 
-let default_title = "title" and default_x_label = "X"
+let default_title = "title"
 and default_y_label = "Y"
 
 let last_field = ref None
+let default_label = "label"
 
 let make_new_field index = {
-  index ; label = "label" ;
+  index ; label = default_label ;
   fmt = Formats.numeric "" ;
   fmt_was_set = false ;
   color = None ;
@@ -357,7 +356,6 @@ let make_new_file fname =
 let make_new_graph () = {
   title = default_title ;
   files = [| |] ;
-  x_label = default_x_label ;
   y1_label = default_y_label ;
   y2_label = default_y_label ;
   y1_stacked = Chart.NotStacked ;
@@ -410,14 +408,6 @@ and graph_options = [| {
     let g = get_current_graph renew in
     g.title <- s ;
     load_graph_config global.confdir g
-} ; {
-  names = [| "x-label" |] ;
-  has_param = true ;
-  descr = "X axis label" ;
-  doc = "" ;
-  setter = (fun s ->
-    let renew g = g.x_label != default_x_label in
-    (get_current_graph renew).x_label <- s) ;
 } ; {
   names = [| "y-label" ; "y1-label" |] ;
   has_param = true ;
@@ -702,14 +692,14 @@ let other_options = [| {
  * Command Line
  *)
 
-let iter_all_files gs f =
+let iter_files gs f =
   Array.iter (fun g ->
     Array.iter f g.files) gs
-let iter_all_fields file f =
-  f file.x_field ;
-  Array.iter f file.y1_fields ;
-  Array.iter f file.y2_fields ;
-  Array.iter f file.annot_fields
+let iter_fields file f =
+  f true file.x_field ;
+  Array.iter (f false) file.y1_fields ;
+  Array.iter (f false) file.y2_fields ;
+  Array.iter (f false) file.annot_fields
 
 let parse_args args =
   (* We want the global and runtime options to be parsed first, and be
@@ -748,12 +738,22 @@ let parse_args args =
       Printf.eprintf "Cannot parse '%s'\n" arg ;
       exit 1) args ;
   (* Arrange configuration *)
-  iter_all_files !graphs (fun file ->
+  let nb_x = ref 0 and nb_y = ref 0 in
+  iter_files !graphs (fun file ->
     let next_unused_field = ref 0 in
-    iter_all_fields file (fun field ->
+    iter_fields file (fun is_x field ->
+      incr (if is_x then nb_x else nb_y) ;
+      Printf.eprintf "check a field...\n" ;
       if field.index = -1 then (
+        Printf.eprintf "found a field with no index, set it to %d\n" !next_unused_field ;
         field.index <- !next_unused_field ;
         incr next_unused_field))) ;
+  if !nb_x != 1 then (
+    Printf.eprintf "You must have 1 X field.\n" ;
+    exit 1) ;
+  if !nb_y != 1 then (
+    Printf.eprintf "You must have at least 1 Y field.\n" ;
+    exit 1) ;
   (* Save configuration *)
   if global.save_config then (
     Printf.eprintf "Saving the configuration\n" ;
