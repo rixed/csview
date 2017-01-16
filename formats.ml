@@ -33,9 +33,7 @@ let label_of_timestamp t =
     else prefix_len (i+1) in
   let pl = prefix_len 0 in
   (* Avoid axing the string in the middle of a meaningful unit: *)
-  let pl = if pl < 5 then 0 else
-           if pl < 8 then 5 else 
-           if pl < 11 then 8 else
+  let pl = if pl < 11 then 0 else
            if pl < 14 then 11 else
            if pl < 17 then 14 else
            if pl < 20 then 17 else pl in
