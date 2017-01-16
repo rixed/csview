@@ -4,8 +4,9 @@ PKG_NAME = csview
 
 CSVIEW_SOURCES = \
 	color.ml formats.ml \
+	read_csv.ml \
 	compilConfig.ml config.ml \
-	chart.ml read_csv.ml csview.ml
+	chart.ml csview.ml
 
 LOADTESTER_SOURCES = csview_loadtester.ml
 
@@ -49,7 +50,7 @@ reinstall: uninstall install
 all_tests.ml: TestEnv.ml read_csv.ml compilConfig.ml config.ml formats.ml
 	$(QTEST) --shuffle --preamble 'open Batteries;; open TestEnv' -o $@ extract $^
 
-all_tests.opt: TestEnv.cmx color.cmx formats.cmx compilConfig.cmx config.cmx read_csv.cmx all_tests.ml
+all_tests.opt: TestEnv.cmx color.cmx formats.cmx compilConfig.cmx read_csv.cmx config.cmx all_tests.ml
 	$(OCAMLOPT) -o $@ $(SYNTAX) -package "$(REQUIRES) qcheck" -linkpkg $(OCAMLOPTFLAGS) $^
 
 check: all_tests.opt

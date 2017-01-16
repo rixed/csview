@@ -242,7 +242,7 @@ let server_or_kaputt ic oc =
   Array.iter (fun g ->
       let open Config in
       assert (Array.length g.files > 0) ;
-      Array.iter Read_csv.update_file_info g.files ;
+      Array.iter Config.update_file_info g.files ;
       (* Now that we have field labels try to use them to arrange axis
        * labels: *)
       if g.y1_label = default_y_label then (
@@ -265,7 +265,6 @@ let server_or_kaputt ic oc =
     kaputt oc str
 
 let () =
-  Printf.eprintf "Parse command line...\n%!" ;
   Config.parse_args Sys.argv ;
   let addr = Unix.(ADDR_INET (inet_addr_of_string "127.0.0.1", port)) in
   (* Better flush all outputs before forking *)

@@ -450,7 +450,9 @@ and graph_options = [| {
     (get_current_graph no_renew).y1_stacked <-
       if bool_of_string s then Stacked else NotStacked) ;
 } ; {
-  names = [| "stackcentered" ; "y1-stackcentered" |] ;
+  names = [| "stackcentered" ; "stackedcentered" ; "stackedcenter" ;
+             "y1-stackcentered" ; "y1-stackedcentered" ;
+             "y1-stackedcenter" |] ;
   has_param = false ;
   descr = "Should values be stacked (smarter stacking)" ;
   doc = "This is only for values plotted against the left Y axis." ;
@@ -466,7 +468,8 @@ and graph_options = [| {
     (get_current_graph no_renew).y2_stacked <-
       if bool_of_string s then Stacked else NotStacked) ;
 } ; {
-  names = [| "y2-stackcentered" |] ;
+  names = [| "stackedcentered" ; "stackedcenter" ; "y1-stackcentered" ;
+             "y1-stackedcentered" ; "y1-stackedcenter" |] ;
   has_param = false ;
   descr = "Should right values be stacked (smarter stacking)" ;
   doc = "This is only for values plotted against the right Y axis." ;
@@ -774,25 +777,31 @@ let parse_args args =
   (* Arrange configuration *)
   Array.iter (fun g ->
     let nb_fields = Array.make 4 0 in
-    let first_y1_field = ref None in
     Array.iter (fun file ->
-        let next_unused_field = ref 0 in
+        (* First: get the labels from the header: *)
+        if file.has_header then (
+          Printf.eprintf "read labels...\n%!" ;
+          let fd = Unix.(openfile file.fname [O_RDONLY; O_CLOEXEC] 0o644) in
+          let str = Read_csv.read_at fd 0 file.block_size in
+          Unix.close fd ;
+          file.data_start <- String.index str '\n' + 1 ;
+          let labels = String.sub str 0 (file.data_start - 1) |>
+                       String.split_on_char file.separator |>
+                       Array.of_list in
+          (* set the label for all fields with default label *)
+          iter_fields file (fun _axis field ->
+            if field.label == default_label then
+              field.label <- labels.(field.index))
+        ) ;
         iter_fields file (fun axis field ->
           if not field.pen.color_was_set then
             field.pen.color <- Color.random_of_string field.label ;
-          nb_fields.(axis) <- nb_fields.(axis) + 1 ;
-          if axis = 1 && !first_y1_field = None then
-            first_y1_field := Some field ;
-          if field.index = -1 then (
-            Printf.eprintf "found a field with no index, set it to %d\n"
-              !next_unused_field ;
-            field.index <- !next_unused_field ;
-            incr next_unused_field))
+          nb_fields.(axis) <- nb_fields.(axis) + 1)
       ) g.files ;
     if nb_fields.(0) != 1 then (
       Printf.eprintf "You must have 1 X field.\n" ;
       exit 1) ;
-    if nb_fields.(1) + nb_fields.(2) != 1 then (
+    if nb_fields.(1) + nb_fields.(2) < 1 then (
       Printf.eprintf "You must have at least 1 Y field.\n" ;
       exit 1) ;
     if not g.draw_legend_was_set then
@@ -804,4 +813,25 @@ let parse_args args =
     save_global_config global.confdir global ;
     Array.iter (fun g ->
       save_graph_config global.confdir g) !graphs
+  )
+
+(* Refresh a config file info *)
+let update_file_info f =
+  Printf.eprintf "  Check file %s...\n" f.fname ;
+  f.fd <- Unix.(openfile f.fname [O_RDONLY; O_CLOEXEC] 0o644) ;
+  let sz = Read_csv.file_size f.fd in
+  if sz <> f.size then (
+    f.size <- sz ;
+    Printf.eprintf "    size is now %d\n" sz ;
+    (try
+      f.last_x <-
+        Read_csv.get_last_x f.fd f.size f.block_size f.separator f.x_field.index f.x_field.fmt.Formats.to_value ;
+      Printf.eprintf "    last x is now %f\n" f.last_x
+     with Not_found -> ()) ;
+    if f.first_x = 0. then
+      (try
+        f.first_x <-
+          Read_csv.get_first_x f.fd f.data_start f.size f.block_size f.separator f.x_field.index f.x_field.fmt.Formats.to_value ;
+        Printf.eprintf "    first x is now %f\n" f.first_x
+       with Not_found -> ()) ;
   )

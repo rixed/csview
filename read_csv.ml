@@ -194,40 +194,6 @@ let rec get_first_x fd ds sz bs sep fn fos =
    1483347348. (get_first_x test_data_1_csv 0 11020 4096 ',' 0 float_of_string)
  *)
 
-(* Refresh a config file info *)
-let update_file_info f =
-  let open Config in
-  Printf.eprintf "  Check file %s...\n" f.fname ;
-  f.fd <- Unix.(openfile f.fname [O_RDONLY; O_CLOEXEC] 0o644) ;
-  let sz = file_size f.fd in
-  if sz <> f.size then (
-    f.size <- sz ;
-    Printf.eprintf "    size is now %d\n" sz ;
-    if f.has_header then (
-      let str = read_at f.fd 0 f.block_size in
-      f.data_start <- String.index str '\n' + 1 ;
-      Printf.eprintf "    data starts at %d\n" f.data_start ;
-      let labels = String.sub str 0 (f.data_start - 1) |>
-                   String.split_on_char f.separator |>
-                   Array.of_list in
-      (* set the label for all fields with default label *)
-      Config.iter_fields f (fun _is_x field ->
-        if field.label == Config.default_label then
-          field.label <- labels.(field.index))
-    ) ;
-    (try
-      f.last_x <-
-        get_last_x f.fd f.size f.block_size f.separator f.x_field.index f.x_field.fmt.Formats.to_value ;
-      Printf.eprintf "    last x is now %f\n" f.last_x
-     with Not_found -> ()) ;
-    if f.first_x = 0. then
-      (try
-        f.first_x <-
-          get_first_x f.fd f.data_start f.size f.block_size f.separator f.x_field.index f.x_field.fmt.Formats.to_value ;
-        Printf.eprintf "    first x is now %f\n" f.first_x
-       with Not_found -> ()) ;
-  )
-
 (* We must return no more than n indices but we can return less if we do have
  * enough data (avoid sending several times the same index!). We also want to
  * have indices evenly spaced in time (not in the index space!) therefore we

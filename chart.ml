@@ -261,7 +261,7 @@ let xy_plot ?(string_of_y=my_string_of_float)
     let label_str = string_of_label label in
     let label_js = js_of_label label in
     let stroke = Color.to_html pen.color in
-      path ~stroke:(if is_stacked then "none" else stroke)
+      path ~stroke:stroke
        ~stroke_width:pen.stroke_width
        ~stroke_opacity:pen.opacity
        ~fill:(if pen.filled then stroke else "none")
