@@ -107,7 +107,7 @@ let strptime fmt str =
     let fix_len = String.length chunk - c in
     if String.length s < o + fix_len then
       raise (BadDateValue (
-        "Missing chars at end of date value '"^ s ^"'")) ;
+        "Missing chars ("^ String.of_char chunk.[c] ^"...) at end of date value '"^ s ^"'")) ;
     for i = 0 to fix_len - 1 do
       if s.[o + i] <> chunk.[c + i] then
         raise (BadDateValue (

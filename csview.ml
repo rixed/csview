@@ -252,7 +252,28 @@ let server_or_kaputt ic oc =
 let () =
   Printf.eprintf "Parse command line...\n%!" ;
   Config.parse_args Sys.argv ;
-  Printf.eprintf "Check the config and open all files...\n%!" ;
-  Printf.eprintf "Start HTTP server on port %d...\n%!" port ;
   let addr = Unix.(ADDR_INET (inet_addr_of_string "127.0.0.1", port)) in
-  Unix.establish_server server_or_kaputt addr
+  (* Better flush all outputs before forking *)
+  IO.flush_all () ;
+  if !Config.open_browser && Unix.fork () = 0 then (
+    let open Unix in
+    (* Wait for the server to be ready and open the browser *)
+    let ic, oc = open_connection addr in
+    IO.close_in ic ;
+    IO.close_out oc ;
+    Printf.printf "Server is ready, launching browser\n" ;
+    let has_subst, cmd =
+      String.replace ~str:Config.(global.open_browser_with) ~sub:"%port%" ~by:(string_of_int port) in
+    if not has_subst then
+      Printf.eprintf "Warning: no substitution took place in %S\n" cmd ;
+    Printf.printf "Running %S\n" cmd ;
+    match system cmd with
+    | WEXITED 0 -> ()
+    | WEXITED ret ->
+      Printf.eprintf "Process %S exited with status %d\n" cmd ret
+    | WSIGNALED _ | WSTOPPED _ ->
+      Printf.eprintf "Process %S killed by signal :(\n" cmd
+  ) else (
+    Printf.eprintf "Start HTTP server on port %d...\n%!" port ;
+    Unix.establish_server server_or_kaputt addr
+  )
