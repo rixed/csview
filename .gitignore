@@ -17,3 +17,4 @@ make.common
 *.csv
 csview
 all_tests.*
+compilConfig.ml

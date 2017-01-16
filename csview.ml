@@ -106,7 +106,7 @@ let get_graph oc params =
   let data =
     with_timing "reading data" (fun () ->
       Array.map (fun file ->
-          Read_csv.read_all file.fd file.x_field.index file.separator file.x_field.fmt.Formats.to_value file.block_size file.size file.first_x file.last_x n t1 t2
+          Read_csv.read_all file.fd file.x_field.index file.separator file.x_field.fmt.Formats.to_value file.block_size file.data_start file.size file.first_x file.last_x n t1 t2
         ) g.files)
   in
   (* The fold function is supposed to accumulate over all datasets *)

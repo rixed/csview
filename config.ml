@@ -211,7 +211,7 @@ let global = {
       with Not_found -> "/tmp" in
     homedir ^"/.csview") ;
   save_config = false ;
-  open_browser_with = "open http://localhost:%port%" ;
+  open_browser_with = CompilConfig.default_open ^" http://localhost:%port%" ;
   default_width = 800 ;
   default_height = 600 ;
 }

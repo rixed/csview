@@ -15,5 +15,12 @@ fi
 
 AC_CHECK_OCAML_PKG(batteries net_codecs parsercombinator owww)
 
-AC_CONFIG_FILES([Makefile make.common])
+if test -x "$(which xdg-open)" ; then
+  DEFAULT_OPEN="xdg-open"
+elif test -x "$(which open)" ; then
+  DEFAULT_OPEN="open"
+fi
+AC_SUBST([DEFAULT_OPEN])
+
+AC_CONFIG_FILES([Makefile make.common compilConfig.ml])
 AC_OUTPUT
