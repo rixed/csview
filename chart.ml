@@ -158,14 +158,14 @@ type fold_t = {
     (* The bool in there is true for all plots in the "primary" chart, and
      * false once at most for the "secondary" plot. Note: the secondary plot
      * is displayed with a distinct Y axis. *)
-    fold : 'a. ('a -> Config.pen -> label -> bool -> (int -> float) -> 'a) -> 'a -> 'a }
+    fold : 'a. ('a -> pen -> label -> bool -> (int -> float) -> 'a) -> 'a -> 'a }
             (* I wonder what's the world record in argument list length? *)
 let xy_plot ?(string_of_y=my_string_of_float)
             ?(string_of_y2=my_string_of_float)
             ?string_of_x
             ?(svg_width=800.) ?(svg_height=600.)
             ?(axis_font_size=14.)
-            ?(draw_legend=true) ?(legend_font_size=12.)
+            ?(draw_legend=UpperLeft) ?(legend_font_size=12.)
             ?(margin_bottom=30.) ?(margin_left=10.) ?(margin_top=30.) ?(margin_right=10.)
             ?(y_tick_spacing=100.) ?(x_tick_spacing=200.) ?(tick_length=5.5)
             ?(axis_arrow_h=11.)
@@ -290,24 +290,44 @@ let xy_plot ?(string_of_y=my_string_of_float)
           Buffer.add_string buf closepath) ;
         Buffer.contents buf
       ) in
+  let avg_char_width = 0.6 in
+  let nb_y, max_label_width = fold.fold (fun (nb_y, w) _pen label _prim _get ->
+    let label_str = string_of_label label in
+    let label_width = legend_font_size *. avg_char_width *.
+                      float_of_int (String.length label_str) in
+    nb_y +. 1., max w label_width) (0., 0.) in
   let legend_row_height = legend_font_size *. 1.2 in
-  let outer_margin_horiz = legend_row_height *. 0.3 in
   let inner_margin_horiz = legend_row_height *. 0.2 in
-  let outer_margin_vert = outer_margin_horiz in
   let inner_margin_vert = inner_margin_horiz in
   let legend_box_width = legend_font_size *. 2. in
+  let legend_width = inner_margin_horiz *. 2. +. legend_box_width
+                   +. max_label_width in
+  let outer_margin = 10. in
+  let outer_margin_horiz, outer_margin_vert = match draw_legend with
+    | NoShow -> 0., 0.
+    | Absolute (x, y) -> x, y
+    | UpperLeft -> outer_margin, outer_margin
+    | UpperRight -> svg_width -. outer_margin -.  legend_width,
+                    outer_margin
+    | BottomLeft -> outer_margin,
+                    svg_height -. outer_margin -. nb_y *. legend_row_height
+    | BottomRight -> svg_width -. outer_margin -.  legend_width,
+                     svg_height -. outer_margin -. nb_y *. legend_row_height in
   let legend_of_dataset (nb_y1, nb_y2, width, svg) pen label prim _get =
     let label_str = string_of_label label in
     let label_width =
       legend_font_size *. 0.6 *. float_of_int (String.length label_str) in
     let row_width = legend_box_width +. label_width in
     let width = max width row_width in
-    let _label_js = js_of_label label in
     let nb_y = float_of_int (nb_y1 + nb_y2) in
     let y = outer_margin_vert +. inner_margin_vert +. legend_row_height *. nb_y in
     let s = g [
-      rect ~fill:(Color.to_html pen.color) ~fill_opacity:1. ~stroke_width:1. ~stroke:"#000" (outer_margin_horiz +. inner_margin_horiz) y legend_box_width legend_font_size ;
-      text ~x:35. ~y:(y +. legend_font_size) ~font_size:legend_font_size label_str
+      rect ~fill:(Color.to_html pen.color) ~fill_opacity:1.
+           ~stroke_width:1. ~stroke:"#000"
+           (outer_margin_horiz +. inner_margin_horiz) y
+           legend_box_width legend_font_size ;
+      text ~x:(outer_margin_horiz +. inner_margin_horiz +. legend_box_width +. 2.)
+           ~y:(y +. legend_font_size) ~font_size:legend_font_size label_str
     ] in
     if prim then nb_y1+1, nb_y2, width, s::svg
             else nb_y1, nb_y2+1, width, s::svg in
@@ -317,11 +337,14 @@ let xy_plot ?(string_of_y=my_string_of_float)
   let grid = xy_grid ~stroke:"#000" ~stroke_width:2. ~font_size:axis_font_size ~arrow_size:axis_arrow_h ~x_tick_spacing ~y_tick_spacing ~tick_length ~x_label ~y_label:y_label_grid ?string_of_x ~string_of_y ?y2 (x_axis_xmin, x_axis_xmax) (y_axis_ymin, y_axis_ymax) (vx_min, vx_max) (vy_min.(0), vy_max.(0))
   and paths = g (map_datasets path_of_dataset) 
   and legend =
-    if draw_legend then (
-      let nb_y1, nb_y2, width, svg =
+    if draw_legend <> NoShow then (
+      let nb_y1, nb_y2, width, boxes =
         fold.fold legend_of_dataset (0, 0, 0., []) in
-      g (rect ~fill:"#ddd" ~fill_opacity:0.7 ~stroke_width:0. outer_margin_horiz outer_margin_vert ((outer_margin_horiz +. inner_margin_horiz) *. 2. +. width) ((outer_margin_vert +. inner_margin_vert) *. 2. +. (float_of_int (nb_y1 + nb_y2)) *. legend_row_height) ::
-         svg)
+      g (rect ~fill:"#ddd" ~fill_opacity:0.7 ~stroke_width:0.
+              outer_margin_horiz outer_margin_vert
+              (inner_margin_horiz *. 2. +. width)
+              (inner_margin_vert *. 2. +. (float_of_int (nb_y1 + nb_y2)) *. legend_row_height) ::
+         boxes)
     ) else g [] in
   let attrs = [
     "xmlns", "http://www.w3.org/2000/svg" ;

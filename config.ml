@@ -37,6 +37,29 @@ type file = {
 }
 
 type stacked = NotStacked | Stacked | StackedCentered
+type legend_location = NoShow
+                     | UpperLeft | UpperRight | BottomLeft | BottomRight
+                     | Absolute of float * float
+
+let string_of_legend = function
+  | NoShow -> "none"
+  | UpperLeft -> "upperleft"
+  | UpperRight -> "upperright"
+  | BottomLeft -> "bottomleft"
+  | BottomRight -> "bottomright"
+  | Absolute (x, y) -> Printf.sprintf "%f,%f" x y
+
+let legend_location_of_string str =
+  match String.lowercase str with
+  | "none" -> NoShow
+  | "upperleft" -> UpperLeft
+  | "upperright" -> UpperRight
+  | "bottomleft" -> BottomLeft
+  | "bottomright" -> BottomRight
+  | _ ->
+    try Scanf.sscanf str "%f,%f" (fun x y -> Absolute (x, y))
+    with Scanf.Scan_failure _ ->
+      raise (ParseError ("Cannot parse legend location '"^ str ^"'"))
 
 type graph = {
   mutable title : string ;
@@ -49,7 +72,7 @@ type graph = {
   mutable x_stop : float option ;
   mutable force_show_0 : bool ;
   mutable font_size : float ;
-  mutable draw_legend : bool ;
+  mutable draw_legend : legend_location ;
   mutable draw_legend_was_set : bool ;
   width : int option ;
   height : int option ;
@@ -169,15 +192,16 @@ let save_graph_config confdir graph =
     Printf.fprintf oc "--y1-label\n%s\n\
                        --y2-label\n%s\n\
                        %s\n%s\n\
-                       --font-size\n%f\n"
+                       --font-size\n%f\n\
+                       --legend\n%s\n"
       graph.y1_label graph.y2_label
       (string_of_stacked "y1" graph.y1_stacked)
       (string_of_stacked "y2" graph.y2_stacked)
-      graph.font_size ;
+      graph.font_size
+      (string_of_legend graph.draw_legend) ;
     print_opt_float oc "--x-start" graph.x_start ;
     print_opt_float oc "--x-stop" graph.x_stop ;
     if graph.force_show_0 then Printf.fprintf oc "--force-show-0\n" ;
-    if not graph.draw_legend then Printf.fprintf oc "--no-legend\n" ;
     print_opt_int oc "--width" graph.width ;
     print_opt_int oc "--height" graph.height ;
     Array.iter (fun file ->
@@ -379,7 +403,7 @@ let make_new_graph () = {
   x_start = None ; x_stop  = None ;
   force_show_0 = false ;
   font_size = 14. ;
-  draw_legend = true ;
+  draw_legend = UpperRight ;
   draw_legend_was_set = false ;
   width = None ;
   height = None ;
@@ -491,14 +515,15 @@ and graph_options = [| {
   setter = fun s ->
     (get_current_graph no_renew).font_size <- float_of_string s
 } ; {
-  names = [| "legend" ; "show-legend" |] ;
-  has_param = false ;
+  names = [| "legend" ; "show-legend" ; "legend-position" ;
+             "legend-location" |] ;
+  has_param = true ;
   descr = "Display the legend" ;
   doc = "By default, will display it if there are more than one plot." ;
-  setter = (fun s ->
+  setter = fun s ->
     let g = get_current_graph no_renew in
     g.draw_legend_was_set <- true ;
-    g.draw_legend <- s = "true") ;
+    g.draw_legend <- legend_location_of_string s
 } ; {
   names = [| "start-x" ; "x-start" ; "start" |] ;
   has_param = true ;
@@ -712,6 +737,7 @@ and field_options = [| {
 
 let open_browser = ref true
 let print_help = ref false
+let output_svg = ref false
 
 let other_options = [| {
   names = [| "open-browser" ; "open" |] ;
@@ -719,13 +745,19 @@ let other_options = [| {
   descr = "automatically launch the browser" ;
   doc = "You may need to use the --opan-browser-with option to configure\
          the details." ;
-  setter = (fun v -> open_browser := bool_of_string v) ;
+  setter = fun v -> open_browser := bool_of_string v ;
 } ; {
   names = [| "help" |] ;
   has_param = false ;
   descr = "print this help" ;
   doc = "" ;
-  setter = (fun _ -> print_help := true) ;
+  setter = fun v -> print_help := bool_of_string v ;
+} ; {
+  names = [| "output-svg" ; "svg-only" ; "svg" |] ;
+  has_param = false ;
+  descr = "dump the SVG and exit" ;
+  doc = "" ;
+  setter = fun s -> output_svg := bool_of_string s
 } |]
 
 (*
@@ -805,7 +837,8 @@ let parse_args args =
       Printf.eprintf "You must have at least 1 Y field.\n" ;
       exit 1) ;
     if not g.draw_legend_was_set then
-      g.draw_legend <- nb_fields.(1) + nb_fields.(2) > 1 ;
+      g.draw_legend <-
+        if nb_fields.(1) + nb_fields.(2) > 1 then UpperRight else NoShow ;
     ) !graphs ;
   (* Save configuration *)
   if global.save_config then (

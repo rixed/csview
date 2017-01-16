@@ -61,7 +61,5 @@ let random_colors =
 
 let random_of_string str =
   let i = Hashtbl.hash str in
-  let col = random_colors.(i mod nb_random_colors) in
-  Printf.eprintf "random color for label %S: %s\n" str (to_string col) ;
-  col
+  random_colors.(i mod nb_random_colors)
 

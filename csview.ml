@@ -94,15 +94,8 @@ let http_msg_of_file fname =
     ] ;
     body })
 
-let get_graph oc params =
+let get_svg g n t1 t2 =
   let open Config in
-  let get n = CodecUrl.get_single_query_param params n in
-  let default v f = try f () with Not_found -> v in
-  let gi = default 0 (fun () -> get "g" |> int_of_string) in
-  let g = !graphs.(gi) in
-  let t1 = default g.files.(0).first_x (fun () -> get "t1" |> float_of_string)
-  and t2 = default g.files.(0).last_x (fun () -> get "t2" |> float_of_string)
-  and n = default 100 (fun () -> get "n" |> int_of_string) in
   let data =
     with_timing "reading data" (fun () ->
       Array.map (fun file ->
@@ -150,7 +143,6 @@ let get_graph oc params =
           | _ -> fmt2 in
         fmt1, fmt2
       ) (None, None) g.files in
-  let svg =
     with_timing "building SVG" (fun () ->
       Chart.xy_plot ~string_of_x:g.files.(0).x_field.fmt.Formats.to_label
                     ?string_of_y ?string_of_y2
@@ -162,7 +154,18 @@ let get_graph oc params =
                     ~stacked_y2:g.y2_stacked
                     ~force_show_0:g.force_show_0
                     g.files.(0).x_field.label g.y1_label
-                    t1 vx_step n fold) in
+                    t1 vx_step n fold)
+
+let get_graph oc params =
+  let open Config in
+  let get n = CodecUrl.get_single_query_param params n in
+  let default v f = try f () with Not_found -> v in
+  let gi = default 0 (fun () -> get "g" |> int_of_string) in
+  let g = !graphs.(gi) in
+  let t1 = default g.files.(0).first_x (fun () -> get "t1" |> float_of_string)
+  and t2 = default g.files.(0).last_x (fun () -> get "t2" |> float_of_string)
+  and n = default 100 (fun () -> get "n" |> int_of_string) in
+  let svg = get_svg g n t1 t2 in
   let msg = http_msg_of_svg svg in
   respond oc msg
 
@@ -264,8 +267,7 @@ let server_or_kaputt ic oc =
               Printexc.get_backtrace () in
     kaputt oc str
 
-let () =
-  Config.parse_args Sys.argv ;
+let start_server () =
   let addr = Unix.(ADDR_INET (inet_addr_of_string "127.0.0.1", port)) in
   (* Better flush all outputs before forking *)
   IO.flush_all () ;
@@ -298,4 +300,21 @@ let () =
   ) else (
     Printf.eprintf "Start HTTP server on port %d...\n%!" port ;
     Unix.establish_server server_or_kaputt addr
+  )
+
+let () =
+  let open Config in
+  parse_args Sys.argv ;
+  if !output_svg then (
+    let g = !graphs.(0) in
+    assert (Array.length g.files > 0) ;
+    Array.iter Config.update_file_info g.files ;
+    let t1 = g.files.(0).first_x
+    and t2 = g.files.(0).last_x
+    and n = 100 in
+    let svg = get_svg g n t1 t2 in
+    Html.print stdout svg ;
+    exit 0
+  ) else (
+    start_server ()
   )
