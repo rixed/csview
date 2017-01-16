@@ -3,7 +3,9 @@ top_srcdir = @top_srcdir@
 PKG_NAME = csview
 
 CSVIEW_SOURCES = \
-	color.ml formats.ml chart.ml compilConfig.ml config.ml read_csv.ml csview.ml
+	color.ml formats.ml \
+	compilConfig.ml config.ml \
+	chart.ml read_csv.ml csview.ml
 
 LOADTESTER_SOURCES = csview_loadtester.ml
 

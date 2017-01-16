@@ -2,14 +2,21 @@ open Batteries
 
 exception ParseError of string
 
+type pen = {
+  mutable color : Color.t ;
+  mutable color_was_set : bool ;
+  mutable opacity : float ;
+  mutable stroke_width : float ;
+  mutable filled : bool ;
+  mutable fill_opacity : float ;
+}
+
 type field = {
   mutable index : int ;
   mutable label : string ;
   mutable fmt : Formats.t ;
   mutable fmt_was_set : bool ; (* track those that were explicitly set *)
-  mutable color : Color.t option ;
-  mutable filled : bool ;
-  mutable opacity : float ;
+  mutable pen : pen ;
 }
 
 type file = {
@@ -29,18 +36,21 @@ type file = {
   mutable block_size : int ; (* a size that worked so far *)
 }
 
+type stacked = NotStacked | Stacked | StackedCentered
+
 type graph = {
   mutable title : string ;
   mutable files : file array ;
   mutable y1_label : string ;
   mutable y2_label : string ;
-  mutable y1_stacked : Chart.stacked ;
-  mutable y2_stacked : Chart.stacked ;
+  mutable y1_stacked : stacked ;
+  mutable y2_stacked : stacked ;
   mutable x_start : float option ; (* initial starting position *)
   mutable x_stop : float option ;
   mutable force_show_0 : bool ;
   mutable font_size : float ;
-  mutable stroke_width : float ;
+  mutable draw_legend : bool ;
+  mutable draw_legend_was_set : bool ;
   width : int option ;
   height : int option ;
 }
@@ -90,15 +100,14 @@ let save_field_config confdir field =
     Printf.fprintf oc "--label\n%s\n\
                        --format\n%s\n\
                        %s\
-                       --opacity\n%f\n"
+                       --color\n%s\n\
+                       --opacity\n%f\n\
+                       --fill-opacity\n%f\n"
               field.label field.fmt.Formats.name
-              (if field.filled then "--filled\n" else "")
-              field.opacity ;
-    match field.color with
-    | Some c ->
-      Printf.fprintf oc "--color\n%s\n"
-        (Color.to_string c)
-    | None -> ())
+              (if field.pen.filled then "--filled\n" else "")
+              (Color.to_string field.pen.color)
+              field.pen.opacity
+              field.pen.fill_opacity)
 
 let file_confname file =
   (if file.confname <> "" then file.confname else file.fname) |>
@@ -143,9 +152,9 @@ let params_of_file_config confdir file =
 let to_fname s = String.nreplace ~str:s ~sub:"/" ~by:"_"
 
 let string_of_stacked what = function
-  | Chart.NotStacked -> "--no-"^ what ^"-stacked"
-  | Chart.Stacked -> "--"^ what ^"-stacked"
-  | Chart.StackedCentered -> "--"^ what ^"-stackedcentered"
+  | NotStacked -> "--no-"^ what ^"-stacked"
+  | Stacked -> "--"^ what ^"-stacked"
+  | StackedCentered -> "--"^ what ^"-stackedcentered"
 
 let print_opt_float oc label = function
   | None -> ()
@@ -168,6 +177,7 @@ let save_graph_config confdir graph =
     print_opt_float oc "--x-start" graph.x_start ;
     print_opt_float oc "--x-stop" graph.x_stop ;
     if graph.force_show_0 then Printf.fprintf oc "--force-show-0\n" ;
+    if not graph.draw_legend then Printf.fprintf oc "--no-legend\n" ;
     print_opt_int oc "--width" graph.width ;
     print_opt_int oc "--height" graph.height ;
     Array.iter (fun file ->
@@ -260,8 +270,14 @@ let make_new_field index = {
   index ; label = default_label ;
   fmt = Formats.numeric "" ;
   fmt_was_set = false ;
-  color = None ;
-  filled = false ; opacity = 1.
+  pen = {
+    color = [| 0. ; 0. ; 0. |] ;
+    color_was_set = false ;
+    opacity = 1. ;
+    stroke_width = 1. ;
+    filled = false ;
+    fill_opacity = 0.7 ;
+  }
 }
 
 let chop s n =
@@ -358,12 +374,13 @@ let make_new_graph () = {
   files = [| |] ;
   y1_label = default_y_label ;
   y2_label = default_y_label ;
-  y1_stacked = Chart.NotStacked ;
-  y2_stacked = Chart.NotStacked ;
+  y1_stacked = NotStacked ;
+  y2_stacked = NotStacked ;
   x_start = None ; x_stop  = None ;
   force_show_0 = false ;
   font_size = 14. ;
-  stroke_width = 1. ;
+  draw_legend = true ;
+  draw_legend_was_set = false ;
   width = None ;
   height = None ;
 }
@@ -431,7 +448,7 @@ and graph_options = [| {
   doc = "This is only for values plotted against the left Y axis." ;
   setter = (fun s ->
     (get_current_graph no_renew).y1_stacked <-
-      if bool_of_string s then Chart.Stacked else Chart.NotStacked) ;
+      if bool_of_string s then Stacked else NotStacked) ;
 } ; {
   names = [| "stackcentered" ; "y1-stackcentered" |] ;
   has_param = false ;
@@ -439,7 +456,7 @@ and graph_options = [| {
   doc = "This is only for values plotted against the left Y axis." ;
   setter = (fun s ->
     (get_current_graph no_renew).y1_stacked <-
-      if bool_of_string s then Chart.StackedCentered else Chart.NotStacked) ;
+      if bool_of_string s then StackedCentered else NotStacked) ;
 } ; {
   names = [| "y2-stacked" |] ;
   has_param = false ;
@@ -447,7 +464,7 @@ and graph_options = [| {
   doc = "This is only for values plotted against the right Y axis." ;
   setter = (fun s ->
     (get_current_graph no_renew).y2_stacked <-
-      if bool_of_string s then Chart.Stacked else Chart.NotStacked) ;
+      if bool_of_string s then Stacked else NotStacked) ;
 } ; {
   names = [| "y2-stackcentered" |] ;
   has_param = false ;
@@ -455,7 +472,7 @@ and graph_options = [| {
   doc = "This is only for values plotted against the right Y axis." ;
   setter = (fun s ->
     (get_current_graph no_renew).y2_stacked <-
-      if bool_of_string s then Chart.StackedCentered else Chart.NotStacked) ;
+      if bool_of_string s then StackedCentered else NotStacked) ;
 } ; {
   names = [| "force-show-0" ; "force-0" ; "show-0" |] ;
   has_param = false ;
@@ -471,12 +488,14 @@ and graph_options = [| {
   setter = fun s ->
     (get_current_graph no_renew).font_size <- float_of_string s
 } ; {
-  names = [| "stroke-width" |] ;
-  has_param = true ;
-  descr = "stroke width" ;
-  doc = "" ;
-  setter = fun s ->
-    (get_current_graph no_renew).stroke_width <- float_of_string s
+  names = [| "legend" ; "show-legend" |] ;
+  has_param = false ;
+  descr = "Display the legend" ;
+  doc = "By default, will display it if there are more than one plot." ;
+  setter = (fun s ->
+    let g = get_current_graph no_renew in
+    g.draw_legend_was_set <- true ;
+    g.draw_legend <- s = "true") ;
 } ; {
   names = [| "start-x" ; "x-start" ; "start" |] ;
   has_param = true ;
@@ -636,19 +655,37 @@ and field_options = [| {
   descr = "color to use for this field" ;
   doc = "" ;
   setter = fun s ->
-    (get_last_field ()).color <- Some (Color.of_string s)
+    let field = get_last_field () in
+    field.pen.color_was_set <- true ;
+    field.pen.color <- Color.of_string s
 } ; {
   names = [| "opacity" |] ;
   has_param = true ;
   descr = "opacity" ;
   doc = "" ;
-  setter = (fun s -> (get_last_field ()).opacity <- float_of_string s)
+  setter = fun s ->
+    (get_last_field ()).pen.opacity <- float_of_string s
+} ; {
+  names = [| "fill-opacity" |] ;
+  has_param = true ;
+  descr = "fill opacity" ;
+  doc = "" ;
+  setter = fun s ->
+    (get_last_field ()).pen.fill_opacity <- float_of_string s
+} ; {
+  names = [| "stroke-width" |] ;
+  has_param = true ;
+  descr = "stroke width" ;
+  doc = "" ;
+  setter = fun s ->
+    (get_last_field ()).pen.stroke_width <- float_of_string s
 } ; {
   names = [| "filled" ; "fill" |] ;
   has_param = false ;
   descr = "should the area below this value be filled?" ;
   doc = "" ;
-  setter = (fun s -> (get_last_field ()).filled <- bool_of_string s)
+  setter = fun s ->
+    (get_last_field ()).pen.filled <- bool_of_string s
 } ; {
   names = [| "format" |] ;
   has_param = true ;
@@ -692,14 +729,11 @@ let other_options = [| {
  * Command Line
  *)
 
-let iter_files gs f =
-  Array.iter (fun g ->
-    Array.iter f g.files) gs
 let iter_fields file f =
-  f true file.x_field ;
-  Array.iter (f false) file.y1_fields ;
-  Array.iter (f false) file.y2_fields ;
-  Array.iter (f false) file.annot_fields
+  f 0 file.x_field ;
+  Array.iter (f 1) file.y1_fields ;
+  Array.iter (f 2) file.y2_fields ;
+  Array.iter (f 3) file.annot_fields
 
 let parse_args args =
   (* We want the global and runtime options to be parsed first, and be
@@ -738,22 +772,32 @@ let parse_args args =
       Printf.eprintf "Cannot parse '%s'\n" arg ;
       exit 1) args ;
   (* Arrange configuration *)
-  let nb_x = ref 0 and nb_y = ref 0 in
-  iter_files !graphs (fun file ->
-    let next_unused_field = ref 0 in
-    iter_fields file (fun is_x field ->
-      incr (if is_x then nb_x else nb_y) ;
-      Printf.eprintf "check a field...\n" ;
-      if field.index = -1 then (
-        Printf.eprintf "found a field with no index, set it to %d\n" !next_unused_field ;
-        field.index <- !next_unused_field ;
-        incr next_unused_field))) ;
-  if !nb_x != 1 then (
-    Printf.eprintf "You must have 1 X field.\n" ;
-    exit 1) ;
-  if !nb_y != 1 then (
-    Printf.eprintf "You must have at least 1 Y field.\n" ;
-    exit 1) ;
+  Array.iter (fun g ->
+    let nb_fields = Array.make 4 0 in
+    let first_y1_field = ref None in
+    Array.iter (fun file ->
+        let next_unused_field = ref 0 in
+        iter_fields file (fun axis field ->
+          if not field.pen.color_was_set then
+            field.pen.color <- Color.random_of_string field.label ;
+          nb_fields.(axis) <- nb_fields.(axis) + 1 ;
+          if axis = 1 && !first_y1_field = None then
+            first_y1_field := Some field ;
+          if field.index = -1 then (
+            Printf.eprintf "found a field with no index, set it to %d\n"
+              !next_unused_field ;
+            field.index <- !next_unused_field ;
+            incr next_unused_field))
+      ) g.files ;
+    if nb_fields.(0) != 1 then (
+      Printf.eprintf "You must have 1 X field.\n" ;
+      exit 1) ;
+    if nb_fields.(1) + nb_fields.(2) != 1 then (
+      Printf.eprintf "You must have at least 1 Y field.\n" ;
+      exit 1) ;
+    if not g.draw_legend_was_set then
+      g.draw_legend <- nb_fields.(1) + nb_fields.(2) > 1 ;
+    ) !graphs ;
   (* Save configuration *)
   if global.save_config then (
     Printf.eprintf "Saving the configuration\n" ;

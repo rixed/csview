@@ -36,7 +36,7 @@ Graph.prototype.src = function () {
 }
 
 var graphs = [];
-var redrawTimeout = 200; // ms
+var redrawTimeout = 150; // ms
 
 function init() {
   // Get some in fo about the graphs that are present on this page
@@ -135,7 +135,7 @@ function doZoom() {
 
   var mid_t = (zoomG.t1 + zoomG.t2) * 0.5;
   var dt = (zoomG.t2 - zoomG.t1) * 0.5;
-  var zoomRatio = 0.001;
+  var zoomRatio = 0.0005;
   var new_dt = zoom > 0 ?
     dt / (1 + zoom * zoomRatio) :
     dt * (1 - zoom * zoomRatio);

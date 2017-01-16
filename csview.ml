@@ -122,12 +122,10 @@ let get_graph oc params =
           let y, _ = Read_csv.extract_field line file.separator 0 field.index field.fmt.Formats.to_value in
           y in
         let prev' = Array.fold_left (fun prev field ->
-          let color = field.color |? Color.random_of_string field.label in
-          f prev color field.label true (* left Y-axis *) (field_getter field))
+          f prev field.pen field.label true (* left Y-axis *) (field_getter field))
           prev file.y1_fields in
         let prev' = Array.fold_left (fun prev field ->
-          let color = field.color |? Color.random_of_string field.label in
-          f prev color field.label false (* right Y-axis *) (field_getter field))
+          f prev field.pen field.label false (* right Y-axis *) (field_getter field))
           prev' file.y2_fields in
         (* TODO: the annotations *)
         for_all_fields (f_idx+1) prev') in
@@ -159,10 +157,12 @@ let get_graph oc params =
                     ~svg_width:(float_of_int (g.width |? global.default_width))
                     ~svg_height:(float_of_int (g.height |? global.default_height))
                     ~axis_font_size:g.font_size
+                    ~draw_legend:g.draw_legend
                     ~stacked_y1:g.y1_stacked
                     ~stacked_y2:g.y2_stacked
                     ~force_show_0:g.force_show_0
-                    g.files.(0).x_field.label g.y1_label t1 vx_step n fold) in
+                    g.files.(0).x_field.label g.y1_label
+                    t1 vx_step n fold) in
   let msg = http_msg_of_svg svg in
   respond oc msg
 
@@ -240,8 +240,23 @@ let server_or_kaputt ic oc =
   (* Do open the files once per process *)
   Printf.printf "New server, opening all files.\n%!" ;
   Array.iter (fun g ->
-      assert (Array.length g.Config.files > 0) ;
-      Array.iter Read_csv.update_file_info g.Config.files
+      let open Config in
+      assert (Array.length g.files > 0) ;
+      Array.iter Read_csv.update_file_info g.files ;
+      (* Now that we have field labels try to use them to arrange axis
+       * labels: *)
+      if g.y1_label = default_y_label then (
+        match Array.find (fun file ->
+          Array.length file.y1_fields > 0) g.files with
+        | exception Not_found -> ()
+        | file -> g.y1_label <- file.y1_fields.(0).label
+      ) ;
+      if g.y2_label = default_y_label then (
+        match Array.find (fun file ->
+          Array.length file.y2_fields > 0) g.files with
+        | exception Not_found -> ()
+        | file -> g.y2_label <- file.y2_fields.(0).label
+      )
     ) !Config.graphs ;
   try server ic oc
   with e ->
@@ -258,10 +273,18 @@ let () =
   if !Config.open_browser && Unix.fork () = 0 then (
     let open Unix in
     (* Wait for the server to be ready and open the browser *)
-    let ic, oc = open_connection addr in
-    IO.close_in ic ;
-    IO.close_out oc ;
-    Printf.printf "Server is ready, launching browser\n" ;
+    let rec wait_server n =
+      if n > 0 then (
+        try let ic, oc = open_connection addr in
+            ignore_exceptions IO.close_in ic ;
+            ignore_exceptions IO.close_out oc ;
+            Printf.printf "Server is ready, launching browser\n"
+        with Unix.Unix_error (ENOTCONN, _, _) as exc ->
+          Printf.eprintf "Cannot connect: %s\n%!" (Printexc.to_string exc) ;
+          sleepf 0.05 ;
+          wait_server (n-1)
+      ) in
+    wait_server 10 ;
     let has_subst, cmd =
       String.replace ~str:Config.(global.open_browser_with) ~sub:"%port%" ~by:(string_of_int port) in
     if not has_subst then
