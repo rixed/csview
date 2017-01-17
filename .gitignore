@@ -18,3 +18,5 @@ make.common
 csview
 all_tests.*
 compilConfig.ml
+README.html
+chicago1.svg

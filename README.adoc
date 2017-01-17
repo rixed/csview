@@ -165,6 +165,15 @@ assumption that a CSV line can be read from any block.
 TODO: fix this limitation that a line must fit within a block, that is
 probably desirable anyway, and then we could filters.
 
+== data sources
+
+Implement a quote character in addition to the field separator.  Also: a way to
+use a column as factors: +-x 1 -y 2 -factors 3,6+ Requires to read all the
+lines for a given T not just one, still assuming proper ordering. Then the
+following parameters would apply to all fields created. The problem is we don't
+know in advance how many factors we will have and have to scan the whole file
+first :-(
+
 == AutoSaving configuration
 
 Use case: We devise the perfect command line to represent some data in some
@@ -202,4 +211,30 @@ in the legend.
 
 TODO
 
+
+== Examples
+
+----
+date,with,without
+2001-01-01,392,1414
+2001-01-02,381,762
+2001-01-03,342,809
+2001-01-04,374,792
+2001-01-05,410,857
+2001-01-06,443,847
+2001-01-07,369,735
+2001-01-08,385,772
+2001-01-09,351,833
+2001-01-10,380,857
+2001-01-11,406,821
+----
+
+----
+./csview test_data/chicago.arrests.csv --has-header \
+  -x 1 --format 'date(%Y-%m-%d)' \
+  -y 2 --filled -y 3 --filled \
+  --show-0 --y-label 'Nbr of Cases' --stacked
+----
+
+image::chicago1.svg[width=800,height=600]
 

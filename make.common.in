@@ -14,7 +14,7 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 
 # Common rules
-.SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot
+.SUFFIXES: .ml .mli .cmo .cmi .cmx .cmxs .annot .adoc .html
 
 %.annot: %.ml
 	$(OCAMLC) $(SYNTAX) -package "$(REQUIRES)" $(OCAMLFLAGS) -c $<
@@ -30,3 +30,6 @@ top_builddir = @top_builddir@
 
 %.cmxs: %.ml
 	$(OCAMLOPT) $(SYNTAX) -package "$(REQUIRES)" $(OCAMLOPTFLAGS) -o $@ -shared $<
+
+%.html: %.adoc
+	asciidoc -a data-uri -a icons -a max-width=55em --theme volnitsky -o $@ $<

@@ -45,6 +45,8 @@ uninstall:
 
 reinstall: uninstall install
 
+doc: README.html
+
 # Tests
 
 all_tests.ml: TestEnv.ml read_csv.ml compilConfig.ml config.ml formats.ml
@@ -64,5 +66,10 @@ dep:
 
 .depend: $(SOURCES)
 	$(OCAMLDEP) -package "$(REQUIRES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > $@
+
+chicago1.svg: csview
+	./csview test_data/chicago.arrests.csv --has-header -x 1 --format 'date(%Y-%m-%d)' -y 2 --filled -y 3 --filled --show-0 --y-label 'Nbr of Cases' --stacked --svg > $@
+
+README.html: README.adoc chicago1.svg
 
 -include .depend

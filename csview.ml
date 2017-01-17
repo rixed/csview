@@ -22,7 +22,7 @@ let () =
   Sys.(set_signal sigint (Signal_handle (fun _ -> exit 0))) ;
   at_exit (fun () ->
     Hashtbl.iter (fun k (dt, n) ->
-        Printf.printf "Time spent %s: %fs (%fs x %d calls)\n"
+        Printf.eprintf "Time spent %s: %fs (%fs x %d calls)\n"
           k dt (dt /. (float_of_int n)) n
       ) times)
 

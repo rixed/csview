@@ -176,8 +176,7 @@ let xy_plot ?(string_of_y=my_string_of_float)
             vx_min_unscaled vx_step_unscaled nb_vx
             fold =
   let vx_min = vx_min_unscaled *. scale_vx
-  and vx_step = vx_step_unscaled *. scale_vx
-  and _vx_max_unscaled = vx_min_unscaled +. (float_of_int nb_vx -. 0.5) *. vx_step_unscaled in
+  and vx_step = vx_step_unscaled *. scale_vx in
   let force_show_0 = if stacked_y1 = StackedCentered || stacked_y2 = StackedCentered then true else force_show_0 in
   let stacked = [| stacked_y1 ; stacked_y2 |] in
   let y_label_grid = if show_rate then y_label ^"/"^ (x_label_for_rate |? x_label) else y_label in
@@ -242,33 +241,19 @@ let xy_plot ?(string_of_y=my_string_of_float)
       tot_vys := !tot_vys +. vy ;
       Hashtbl.modify_def 0. lbl ((+.) vy) tot_vy
     done) ;
-  let dvx = vx_max -. vx_min in
   Formats.reset_all_states () ;
-  let _avg_vy =
-    if dvx > 0. then
-      (string_of_y (!tot_vys /. dvx)) ^ y_label_grid
-    else "none" in
-  let info prim label =
-    if prim then (
-      let tot = Hashtbl.find tot_vy label in
-      "Tot:&nbsp;"^ (string_of_y tot) ^ y_label ^
-      (if dvx > 0. then "&lt;br/&gt;Avg:&nbsp;"^ (string_of_y (tot /. dvx)) ^ y_label_grid else "")
-    ) else "" in
   (* The SVG *)
   let path_of_dataset pen label prim get =
     let pi = if prim then 0 else 1 in
     let is_stacked = stacked.(pi) <> NotStacked && prim in
     let label_str = string_of_label label in
-    let label_js = js_of_label label in
     let stroke = Color.to_html pen.color in
       path ~stroke:stroke
        ~stroke_width:pen.stroke_width
        ~stroke_opacity:pen.opacity
        ~fill:(if pen.filled then stroke else "none")
        ?fill_opacity:(if pen.filled then Some pen.fill_opacity else None)
-       ~attrs:["class","fitem "^ label_str ;
-               "onmouseover","label_select("^ label_js ^", '"^info prim label^"')" ;
-               "onmouseout", "label_unselect("^label_js ^")" ]
+       ~attrs:["class","fitem "^ label_str]
       (
         let buf = Buffer.create 100 in (* to write path commands in *)
         (* Top line *)
