@@ -70,6 +70,8 @@ type graph = {
   mutable y2_stacked : stacked ;
   mutable x_start : float option ; (* initial starting position *)
   mutable x_stop : float option ;
+  mutable x_tick_spacing : float option ;
+  mutable y_tick_spacing : float option ;
   mutable force_show_0 : bool ;
   mutable font_size : float ;
   mutable draw_legend : legend_location ;
@@ -202,6 +204,10 @@ let save_graph_config confdir graph =
     print_opt_float oc "--x-start" graph.x_start ;
     print_opt_float oc "--x-stop" graph.x_stop ;
     if graph.force_show_0 then Printf.fprintf oc "--force-show-0\n" ;
+    Option.may (fun v -> Printf.fprintf oc "--x-tick-spacing\n%f\n" v)
+      graph.x_tick_spacing ;
+    Option.may (fun v -> Printf.fprintf oc "--y-tick-spacing\n%f\n" v)
+      graph.y_tick_spacing ;
     print_opt_int oc "--width" graph.width ;
     print_opt_int oc "--height" graph.height ;
     Array.iter (fun file ->
@@ -402,6 +408,8 @@ let make_new_graph () = {
   y2_stacked = NotStacked ;
   x_start = None ; x_stop  = None ;
   force_show_0 = false ;
+  x_tick_spacing = None ;
+  y_tick_spacing = None ;
   font_size = 14. ;
   draw_legend = UpperRight ;
   draw_legend_was_set = false ;
@@ -507,6 +515,20 @@ and graph_options = [| {
   doc = "" ;
   setter = (fun s ->
     (get_current_graph no_renew).force_show_0 <- s = "true") ;
+} ; {
+  names = [| "x-tick-spacing" |] ;
+  has_param = true;
+  descr = "Approximate distance between successive ticks on the X axis" ;
+  doc = "" ;
+  setter = fun s ->
+    (get_current_graph no_renew).x_tick_spacing <- Some (float_of_string s)
+} ; {
+  names = [| "y-tick-spacing" |] ;
+  has_param = true;
+  descr = "Approximate distance between successive ticks on the Y axis" ;
+  doc = "" ;
+  setter = fun s ->
+    (get_current_graph no_renew).y_tick_spacing <- Some (float_of_string s)
 } ; {
   names = [| "font-size" |] ;
   has_param = true ;

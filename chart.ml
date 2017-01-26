@@ -173,7 +173,7 @@ let xy_plot ?(string_of_y=my_string_of_float)
             ?(axis_font_size=14.)
             ?(draw_legend=UpperLeft) ?(legend_font_size=12.)
             ?(margin_bottom=30.) ?(margin_left=10.) ?(margin_top=30.) ?(margin_right=10.)
-            ?(y_tick_spacing=100.) ?(x_tick_spacing=200.) ?(tick_length=5.5)
+            ?(y_tick_spacing=100.) ?(x_tick_spacing=170.) ?(tick_length=5.5)
             ?(axis_arrow_h=11.) ?x_base ?y1_base ?y2_base
             ?(stacked_y1=NotStacked) ?(stacked_y2=NotStacked)
             ?(force_show_0=false) ?(show_rate=false) ?x_label_for_rate

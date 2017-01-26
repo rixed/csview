@@ -159,6 +159,8 @@ let get_svg g n t1 t2 =
                               with Invalid_argument _ -> None)
                     ?y2_base:(try Some file0.y2_fields.(0).fmt.Formats.base
                               with Invalid_argument _ -> None)
+                    ?x_tick_spacing:g.x_tick_spacing
+                    ?y_tick_spacing:g.y_tick_spacing
                     file0.x_field.label g.y1_label
                     t1 vx_step n fold)
 
