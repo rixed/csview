@@ -6,10 +6,12 @@ type t = {
   to_value : string -> float ;
   to_label : float -> string ;
   name : string ;
+  base : float ;
 }
 
 let numeric _ = {
   name = "numeric" ;
+  base = 10. ;
   to_value = (fun s ->
     try float_of_string s
     with Failure _ ->
@@ -52,6 +54,7 @@ let label_of_timestamp t =
 
 let timestamp _ = {
   name = "timestamp" ;
+  base = 60. ;
   to_value = (fun s ->
     try float_of_string s
     with Failure _ ->
@@ -142,6 +145,7 @@ let strptime fmt str =
 
 let date fmt = {
   name = "date("^ fmt ^")" ;
+  base = 60. ;
   to_label = label_of_timestamp ;
   to_value = fun s ->
     strptime fmt s

@@ -2,11 +2,13 @@ open Batteries
 open Html
 open Config
 
-let grid_interval n start stop =
+let log_base base n = log n /. log base
+
+let grid_interval ?(base=10.) n start stop =
   let dv = stop -. start in
   (* find the round value closest to dv/n (by round we mean 1, 5, 10...) *)
   let l = dv /. float_of_int n in (* l = length if we split dv in n equal parts *)
-  let f = 10. ** floor (log10 l) in (* f closest power of 10 below l *)
+  let f = base ** floor (log_base base l) in (* f closest power of 10 below l *)
   let i = floor (l /. f) in (* i >= 1, how much f is smaller than l *)
   if i < 2.5 || 5. *. f >= dv then f else (* if it's less than 2.5 times smaller, use it *)
   if i < 7.5 || 10. *. f >= dv then 5. *. f else (* if it's around 5 times smaller, use 5*f *)
@@ -19,9 +21,11 @@ let grid_interval n start stop =
     interval >= 0. && interval <= width)
  *)
 
-(* Given a range of values [start:stop], returns an enum of approximatively [n] round intermediate values *)
-let grid n start stop =
-  let interval = grid_interval n start stop in
+(* Given a range of values [start:stop], returns an enum of approximatively [n]
+ * round intermediate values *)
+
+let grid ?base n start stop =
+  let interval = grid_interval ?base n start stop in
   let lo = interval *. floor (start /. interval) in
   let lo = if lo >= start then lo else lo +. interval in
   Enum.seq lo ((+.) interval) ((>=) stop)
@@ -51,7 +55,7 @@ let js_of_label l = "{ label:'"^ l ^"' }"
 (** Draw an axis-arrow with graduations, ticks and label. *)
 let axis ?(extend_ticks=0.) ?(stroke="#000") ?(stroke_width=1.)
          ?(arrow_size=0.) ?(tick_spacing=100.) ?(tick_length=5.)
-         ?(label="") ?(font_size=16.) ?opacity
+         ?(label="") ?(font_size=16.) ?opacity ?base
          ?(string_of_v=my_string_of_float) ?(invert=false)
          (x1, y1) (x2, y2) v_min v_max =
   let sq x = x *. x in
@@ -78,7 +82,7 @@ let axis ?(extend_ticks=0.) ?(stroke="#000") ?(stroke_width=1.)
                       else "text-anchor:start; dominant-baseline:central" in
     text ~font_size:(1.2 *. font_size) ?stroke_opacity:opacity ?fill_opacity:opacity ~x ~y ~style label) ::
     (
-      grid (axis_len /. tick_spacing |> Int.of_float) v_min v_max /@
+      grid ?base (axis_len /. tick_spacing |> Int.of_float) v_min v_max /@
       (fun v ->
         let t = ((v -. v_min) /. (v_max -. v_min)) *. axis_len in
         let tick_start = add (x1, y1) (goto t ~-.tick_length) in
@@ -113,6 +117,7 @@ let get_ratio x_min x_max v_min v_max v =
 let xy_grid ?(show_vgrid=true) ?stroke ?stroke_width ?font_size
             ?arrow_size ?x_tick_spacing ?y_tick_spacing ?tick_length
             ?x_label ?y_label ?string_of_y ?y2 ?string_of_x
+            ?x_base ?y1_base ?y2_base
             (x_min, x_max) (y_min, y_max) (vx_min, vx_max) (vy_min, vy_max) =
   let get_x = get_ratio x_min x_max vx_min vx_max
   and get_y = get_ratio y_min y_max vy_min vy_max in
@@ -124,17 +129,18 @@ let xy_grid ?(show_vgrid=true) ?stroke ?stroke_width ?font_size
   and y_orig = bound_by y_max y_min (get_y 0.) in (* note that y_min, the Y of the origin, is actually greater the y_max, due to the fact that SVG Y starts at top of img *)
   Formats.reset_all_states () ;
   let x_axis =
-    axis ?stroke ?stroke_width ?arrow_size ?tick_spacing:x_tick_spacing ?font_size ?tick_length
+    axis ?base:x_base ?stroke ?stroke_width ?arrow_size ?tick_spacing:x_tick_spacing ?font_size ?tick_length
          ?label:x_label ?string_of_v:string_of_x (x_min, y_orig) (x_max, y_orig) vx_min vx_max in
   Formats.reset_all_states () ;
   let y_axis =
-    axis ?stroke ?stroke_width ?arrow_size ?tick_spacing:y_tick_spacing ?font_size ?tick_length ~extend_ticks:(if show_vgrid then x_max -. x_min else 0.)
+    axis ?base:y1_base ?stroke ?stroke_width ?arrow_size ?tick_spacing:y_tick_spacing ?font_size ?tick_length
+         ~extend_ticks:(if show_vgrid then x_max -. x_min else 0.)
          ?label:y_label ?string_of_v:string_of_y (x_orig, y_min) (x_orig, y_max) vy_min vy_max in
   Formats.reset_all_states () ;
   let y2_axis = match y2 with
     | None -> g []
     | Some (label, string_of_v, vy2_min, vy2_max) ->
-      axis ?stroke ?stroke_width ?arrow_size ?tick_spacing:y_tick_spacing ?font_size
+      axis ?base:y2_base ?stroke ?stroke_width ?arrow_size ?tick_spacing:y_tick_spacing ?font_size
            ?tick_length ~invert:true ~label ~string_of_v ~opacity:0.5
            (x_max, y_min) (x_max, y_max) vy2_min vy2_max in
   g [ x_axis ; y_axis ; y2_axis ]
@@ -168,7 +174,7 @@ let xy_plot ?(string_of_y=my_string_of_float)
             ?(draw_legend=UpperLeft) ?(legend_font_size=12.)
             ?(margin_bottom=30.) ?(margin_left=10.) ?(margin_top=30.) ?(margin_right=10.)
             ?(y_tick_spacing=100.) ?(x_tick_spacing=200.) ?(tick_length=5.5)
-            ?(axis_arrow_h=11.)
+            ?(axis_arrow_h=11.) ?x_base ?y1_base ?y2_base
             ?(stacked_y1=NotStacked) ?(stacked_y2=NotStacked)
             ?(force_show_0=false) ?(show_rate=false) ?x_label_for_rate
             ?(scale_vx=1.)
@@ -319,7 +325,12 @@ let xy_plot ?(string_of_y=my_string_of_float)
   let y2 =
     Option.bind !label2 (fun label ->
       Some (string_of_label label, string_of_y2, vy_min.(1), vy_max.(1))) in
-  let grid = xy_grid ~stroke:"#000" ~stroke_width:2. ~font_size:axis_font_size ~arrow_size:axis_arrow_h ~x_tick_spacing ~y_tick_spacing ~tick_length ~x_label ~y_label:y_label_grid ?string_of_x ~string_of_y ?y2 (x_axis_xmin, x_axis_xmax) (y_axis_ymin, y_axis_ymax) (vx_min, vx_max) (vy_min.(0), vy_max.(0))
+  let grid = xy_grid ~stroke:"#000" ~stroke_width:2. ~font_size:axis_font_size
+                     ~arrow_size:axis_arrow_h ~x_tick_spacing ~y_tick_spacing
+                    ~tick_length ~x_label ~y_label:y_label_grid
+                    ?string_of_x ~string_of_y ?y2 ?x_base ?y1_base ?y2_base
+                    (x_axis_xmin, x_axis_xmax) (y_axis_ymin, y_axis_ymax)
+                    (vx_min, vx_max) (vy_min.(0), vy_max.(0))
   and paths = g (map_datasets path_of_dataset) 
   and legend =
     if draw_legend <> NoShow then (

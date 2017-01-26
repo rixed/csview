@@ -143,8 +143,9 @@ let get_svg g n t1 t2 =
           | _ -> fmt2 in
         fmt1, fmt2
       ) (None, None) g.files in
+    let file0 = g.files.(0) in
     with_timing "building SVG" (fun () ->
-      Chart.xy_plot ~string_of_x:g.files.(0).x_field.fmt.Formats.to_label
+      Chart.xy_plot ~string_of_x:file0.x_field.fmt.Formats.to_label
                     ?string_of_y ?string_of_y2
                     ~svg_width:(float_of_int (g.width |? global.default_width))
                     ~svg_height:(float_of_int (g.height |? global.default_height))
@@ -153,7 +154,12 @@ let get_svg g n t1 t2 =
                     ~stacked_y1:g.y1_stacked
                     ~stacked_y2:g.y2_stacked
                     ~force_show_0:g.force_show_0
-                    g.files.(0).x_field.label g.y1_label
+                    ~x_base:file0.x_field.fmt.Formats.base
+                    ?y1_base:(try Some file0.y1_fields.(0).fmt.Formats.base
+                              with Invalid_argument _ -> None)
+                    ?y2_base:(try Some file0.y2_fields.(0).fmt.Formats.base
+                              with Invalid_argument _ -> None)
+                    file0.x_field.label g.y1_label
                     t1 vx_step n fold)
 
 let get_graph oc params =
