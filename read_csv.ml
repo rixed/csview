@@ -16,6 +16,7 @@ let read_at fd ofs bs =
   let ofs' = lseek fd ofs SEEK_SET in
   assert (ofs' = ofs) ;
   let r = read fd buf 0 bs in
+  if debug then Printf.eprintf "Read %d bytes out of %d at offset %d\n" r bs ofs ;
   assert (r = bs) ;
   Bytes.to_string buf
 
@@ -183,7 +184,7 @@ let rec get_last_x fd sz bs sep fn fos =
  *)
 
 let rec get_first_x fd ds sz bs sep fn fos =
-  let bs' = min sz bs in
+  let bs' = min (sz - ds) bs in
   let str = read_at fd ds bs' in
   try extract_field str sep 0 fn fos |> fst
   with Not_found ->
