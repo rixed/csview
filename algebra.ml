@@ -34,6 +34,20 @@ let operation =
       | Imm a, Fun f -> Fun (fun x -> op_f a (f x))
       | Fun f, Imm b -> Fun (fun x -> op_f (f x) b)
       | Fun f, Fun g -> Fun (fun x -> op_f (f x) (g x)) in
+  let unary_op m =
+    ((string "sin" >>: fun _ -> sin) |||
+     (string "cos" >>: fun _ -> cos) |||
+     (string "tan" >>: fun _ -> tan) |||
+     (string "asin" >>: fun _ -> asin) |||
+     (string "acos" >>: fun _ -> acos) |||
+     (string "atan" >>: fun _ -> atan) |||
+     (string "sinh" >>: fun _ -> sinh) |||
+     (string "cosh" >>: fun _ -> cosh) |||
+     (string "tanh" >>: fun _ -> tanh) |||
+     (string "log" >>: fun _ -> log10) |||
+     (string "ln"  >>: fun _ -> log) |||
+     (string "exp" >>: fun _ -> exp) |||
+     (string "sqrt">>: fun _ -> sqrt)) m in
   let rec left_assoc_low_prec m =
     binary_ops_reducer ~op:(item '+' ||| item '-')
                        ~term:left_assoc_high_prec
@@ -49,7 +63,10 @@ let operation =
                        ~sep ~reduce m
   and left_assoc_highest_prec m =
     (value |||
-     item '(' -+ left_assoc_low_prec +- item ')') m in
+     (optional ~def:identity unary_op +- sep +-
+      item '(' ++ left_assoc_low_prec +- item ')' >>: function
+        | (f, Imm v) -> Imm (f v)
+        | (f, Fun g) -> Fun (fun x -> f (g x)))) m in
   left_assoc_low_prec
 
 (*$= operation & ~printer:(IO.to_string (P.print_result Float.print))
