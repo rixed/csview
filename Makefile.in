@@ -36,6 +36,7 @@ clear:
 	sed -i.bak -e 's/[ 	]\+$$//' $(wildcard *.adoc) $(wildcard *.ml)
 
 install: csview
+	strip csview
 	install -D csview $(DESTDIR)@prefix@/bin/csview
 
 uninstall:
