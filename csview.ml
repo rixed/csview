@@ -133,10 +133,9 @@ let get_svg g n t1 t2 =
                 field.pen, field.label, pri, getter)
           | Expr expr ->
             let open Expression in
-            let dx = expr.bounds.last_x -. expr.bounds.first_x in
+            let dt = t2 -. t1 in
             let getter ts_idx =
-              let ts = expr.bounds.first_x +.
-                       dx *. (float_of_int ts_idx) /. nf in
+              let ts = t1 +.  dt *. (float_of_int ts_idx) /. nf in
               expr.funct ts in
             [| expr.pen, expr.label, expr.on_y1_axis, getter |]
         ) g.files)
