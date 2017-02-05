@@ -1,40 +1,209 @@
 open Batteries
 
+let debug = false
+
 exception ParseError of string
 
-type pen = {
-  mutable color : Color.t ;
-  mutable color_was_set : bool ;
-  mutable opacity : float ;
-  mutable stroke_width : float ;
-  mutable filled : bool ;
-  mutable fill_opacity : float ;
-}
+let default_title = "title"
+let default_y_label = "Y"
+let default_label = "label"
 
-type field = {
-  mutable index : int ;
-  mutable label : string ;
-  mutable fmt : Formats.t ;
-  mutable fmt_was_set : bool ; (* track those that were explicitly set *)
-  mutable pen : pen ;
-}
+(* Config file: super hackish! Should be rewritten, with each parameter (above)
+ * having a getter that either take a value set by command line or fallback to
+ * the configuration file(s). *)
 
-type file = {
-  mutable fname : string ;
-  mutable confname : string ;
-  mutable fd : Unix.file_descr ;
-  mutable separator : char ;
-  mutable has_header : bool ;
-  mutable x_field : field ;
-  mutable y1_fields : field array ;
-  mutable y2_fields : field array ;
-  mutable annot_fields : field array ;
-  mutable data_start : int ;  (* not 0 if has_header *)
-  mutable size : int ;
+let mkdir_all ?(is_file=false) dir =
+    let dir_exist d =
+        try Sys.is_directory d with Sys_error _ -> false in
+    let dir = if is_file then Filename.dirname dir else dir in
+    let rec ensure_exist d =
+        if String.length d > 0 && not (dir_exist d) then (
+            ensure_exist (Filename.dirname d) ;
+            try Unix.mkdir d 0o755
+            with Unix.Unix_error (Unix.EEXIST, "mkdir", _) ->
+                (* Happen when we have "somepath//someother" (dirname should handle this IMHO *)
+                ()
+        ) in
+    ensure_exist dir
+
+let with_save_file confdir name =
+  mkdir_all confdir ;
+  let fname = confdir ^"/"^ name in
+  if debug then Printf.eprintf "Storing config in file '%s'\n" fname ;
+  let mode = [ `create; `trunc; `text ] in
+  BatFile.with_file_out ~mode fname
+
+module Pen = struct
+  type t = {
+    mutable color : Color.t ;
+    mutable color_was_set : bool ;
+    mutable opacity : float ;
+    mutable stroke_width : float ;
+    mutable filled : bool ;
+    mutable fill_opacity : float ;
+    mutable draw_line : bool ;
+    mutable draw_points : bool ;
+  }
+  let make_new () = {
+    color = [| 0. ; 0. ; 0. |] ;
+    color_was_set = false ;
+    opacity = 1. ;
+    stroke_width = 1. ;
+    filled = false ;
+    fill_opacity = 0.7 ;
+    draw_line = true ;
+    draw_points = false ;
+  }
+end
+
+module Field = struct
+  type t = {
+    mutable index : int ;
+    mutable label : string ;
+    mutable fmt : Formats.t ;
+    mutable fmt_was_set : bool ; (* track those that were explicitly set *)
+    mutable pen : Pen.t ;
+  }
+  let last : t option ref = ref None
+
+  (* We create a new graph when we set again a field that has already been set.
+   * But for stacked which cannot be compared by address. *)
+  let make_new index = {
+    index ; label = default_label ;
+    fmt = Formats.numeric "" ;
+    fmt_was_set = false ;
+    pen = Pen.make_new ()
+  }
+
+  let save_config confdir f =
+    let fname = string_of_int f.index in
+    with_save_file confdir fname (fun oc ->
+      Printf.fprintf oc "--label\n%s\n\
+                         --format\n%s\n\
+                         %s%s%s\
+                         --color\n%s\n\
+                         --opacity\n%f\n\
+                         --fill-opacity\n%f\n"
+                f.label f.fmt.Formats.name
+                (if f.pen.Pen.filled then "--filled\n" else "")
+                (if f.pen.Pen.draw_line then "--line\n" else "")
+                (if f.pen.Pen.draw_points then "--points\n" else "")
+                (Color.to_string f.pen.Pen.color)
+                f.pen.Pen.opacity
+                f.pen.Pen.fill_opacity)
+end
+
+type bounds = {
   mutable first_x : float ;
   mutable last_x : float ;
-  mutable block_size : int ; (* a size that worked so far *)
 }
+
+module File = struct
+  type t = {
+    fname : string ;
+    mutable confname : string ;
+    mutable fd : Unix.file_descr ;
+    mutable separator : char ;
+    mutable has_header : bool ;
+    mutable x_field : Field.t ;
+    mutable y1_fields : Field.t array ;
+    mutable y2_fields : Field.t array ;
+    mutable annot_fields : Field.t array ;
+    mutable data_start : int ;  (* not 0 if has_header *)
+    mutable size : int ;
+    mutable block_size : int ; (* a size that worked so far *)
+    bounds : bounds
+  }
+  let make_new fname =
+    Field.last := None ;
+    { fname ; confname = "" ;
+      separator = ',' ;
+      has_header = false ;
+      fd = Unix.stdin ; (* typechecks *)
+      x_field = Field.make_new ~-1 ;
+      y1_fields = [| |] ;
+      y2_fields = [| |] ;
+      annot_fields = [| |] ;
+      data_start = 0; size = -1 ;
+      block_size = 1024 ;
+      bounds = { first_x = 0. ; last_x = 0. } }
+
+  let confname f =
+    (if f.confname <> "" then f.confname else f.fname) |>
+    Filename.basename
+
+  let save_config confdir file =
+    let confdir = confdir ^"/files" in
+    let fname = confname file in
+    with_save_file confdir fname (fun oc ->
+      (* For a file we want to save the separator, the block size, and for each
+       * possible field (indexed by field number) its label, format, and
+       * graphic config. This does not say what should be ultimately used as
+       * a graph Y or X value, though. This goes in the graph savefile.
+       * In order to easily update a file config we store each field in a
+       * separate file. Inodes are cheap!.*)
+      Printf.fprintf oc "--separator\n%c\n\
+                         --block-size\n%d\n"
+        file.separator file.block_size ;
+      if file.has_header then Printf.fprintf oc "--has-header\n" ;
+      ) ;
+    let file_confdir = confdir ^"/"^ fname ^".fields" in
+    Field.save_config file_confdir file.x_field ;
+    Array.iter (Field.save_config file_confdir) file.y1_fields ;
+    Array.iter (Field.save_config file_confdir) file.y2_fields
+
+  (* Refresh a config file info *)
+  let update_info f =
+    if debug then Printf.eprintf "  Check file %s...\n" f.fname ;
+    f.fd <- Unix.(openfile f.fname [O_RDONLY; O_CLOEXEC] 0o644) ;
+    let sz = Read_csv.file_size f.fd in
+    if sz <> f.size then (
+      f.size <- sz ;
+      if debug then Printf.eprintf "    size is now %d\n" sz ;
+      (try
+        f.bounds.last_x <-
+          Read_csv.get_last_x f.fd f.size f.block_size f.separator f.x_field.Field.index f.x_field.Field.fmt.Formats.to_value ;
+        if debug then Printf.eprintf "    last x is now %f\n" f.bounds.last_x
+       with Not_found -> ()) ;
+      if f.bounds.first_x = 0. then
+        (try
+          f.bounds.first_x <-
+            Read_csv.get_first_x f.fd f.data_start f.size f.block_size f.separator f.x_field.Field.index f.x_field.Field.fmt.Formats.to_value ;
+          if debug then Printf.eprintf "    first x is now %f\n" f.bounds.first_x
+         with Not_found -> ()) ;
+    )
+end
+
+(* instead of a file once can also enter an expression: *)
+module Expression = struct
+  type t = {
+    expression : string ;
+    funct : float -> float ;
+    mutable label : string ;
+    mutable pen : Pen.t ;
+    mutable on_y1_axis : bool ;
+    mutable bounds : bounds
+    (* TODO: we may want to set a validity domain *)
+  }
+
+  let make_new expression alg_val = {
+    expression ;
+    funct = (let open Algebra in
+      match alg_val with
+      | Imm v -> fun _ -> v
+      | Fun f -> f) ;
+    on_y1_axis = true ;
+    label = default_label ;
+    pen = Pen.make_new () ;
+    bounds = { first_x = 0. ; last_x = 0. } ;
+  }
+end
+
+type file_or_expr = File of File.t | Expr of Expression.t
+
+let bounds_of_file = function
+  | File file -> file.File.bounds
+  | Expr expr -> expr.Expression.bounds
 
 type stacked = NotStacked | Stacked | StackedCentered
 type legend_location = NoShow
@@ -63,7 +232,8 @@ let legend_location_of_string str =
 
 type graph = {
   mutable title : string ;
-  mutable files : file array ;
+  mutable files : file_or_expr array ;
+  mutable x_label : string ; (* or use files.(0).x_field.label *)
   mutable y1_label : string ;
   mutable y2_label : string ;
   mutable y1_stacked : stacked ;
@@ -88,87 +258,23 @@ type global = {
   mutable default_height : int ;
 }
 
-(* Config file: super hackish! Should be rewritten, with each parameter (above)
- * having a getter that either take a value set by command line or fallback to
- * the configuration file(s). *)
-
-let mkdir_all ?(is_file=false) dir =
-    let dir_exist d =
-        try Sys.is_directory d with Sys_error _ -> false in
-    let dir = if is_file then Filename.dirname dir else dir in
-    let rec ensure_exist d =
-        if String.length d > 0 && not (dir_exist d) then (
-            ensure_exist (Filename.dirname d) ;
-            try Unix.mkdir d 0o755
-            with Unix.Unix_error (Unix.EEXIST, "mkdir", _) ->
-                (* Happen when we have "somepath//someother" (dirname should handle this IMHO *)
-                ()
-        ) in
-    ensure_exist dir
-
-let with_save_file confdir name =
-  mkdir_all confdir ;
-  let fname = confdir ^"/"^ name in
-  Printf.eprintf "Storing config in file '%s'\n" fname ;
-  let mode = [ `create; `trunc; `text ] in
-  File.with_file_out ~mode fname
-
 let params_of_file confdir name =
   let fname = confdir ^"/"^ name in
-  File.lines_of fname |>
+  BatFile.lines_of fname |>
   Enum.map Option.some |>
   Array.of_enum
 
-let save_field_config confdir field =
-  let fname = string_of_int field.index in
-  with_save_file confdir fname (fun oc ->
-    Printf.fprintf oc "--label\n%s\n\
-                       --format\n%s\n\
-                       %s\
-                       --color\n%s\n\
-                       --opacity\n%f\n\
-                       --fill-opacity\n%f\n"
-              field.label field.fmt.Formats.name
-              (if field.pen.filled then "--filled\n" else "")
-              (Color.to_string field.pen.color)
-              field.pen.opacity
-              field.pen.fill_opacity)
-
-let file_confname file =
-  (if file.confname <> "" then file.confname else file.fname) |>
-  Filename.basename
-
 let params_of_field_config confdir file n =
-  let confdir = confdir ^"/files/"^ file_confname file ^".fields" in
+  let confdir = confdir ^"/files/"^ File.confname file ^".fields" in
   try params_of_file confdir (string_of_int n)
   with exn ->
     Printf.eprintf "Cannot read field %d configuration from %s: %s\n"
       n confdir (Printexc.to_string exn) ;
     [| |]
 
-let save_file_config confdir file =
-  let confdir = confdir ^"/files" in
-  let fname = file_confname file in
-  with_save_file confdir fname (fun oc ->
-    (* For a file we want to save the separator, the block size, and for each
-     * possible field (indexed by field number) its label, format, and
-     * graphic config. This does not say what should be ultimately used as
-     * a graph Y or X value, though. This goes in the graph savefile.
-     * In order to easily update a file config we store each field in a
-     * separate file. Inodes are cheap!.*)
-    Printf.fprintf oc "--separator\n%c\n\
-                       --block-size\n%d\n"
-      file.separator file.block_size ;
-    if file.has_header then Printf.fprintf oc "--has-header\n" ;
-    ) ;
-  let file_confdir = confdir ^"/"^ fname ^".fields" in
-  save_field_config file_confdir file.x_field ;
-  Array.iter (save_field_config file_confdir) file.y1_fields ;
-  Array.iter (save_field_config file_confdir) file.y2_fields
-
 let params_of_file_config confdir file =
-  let confdir = confdir ^"/files/"^ file_confname file in
-  try params_of_file confdir (file_confname file)
+  let confdir = confdir ^"/files/"^ File.confname file in
+  try params_of_file confdir (File.confname file)
   with exn ->
     Printf.eprintf "Cannot read file configuration from %s: %s\n"
       confdir (Printexc.to_string exn) ;
@@ -210,11 +316,16 @@ let save_graph_config confdir graph =
       graph.y_tick_spacing ;
     print_opt_int oc "--width" graph.width ;
     print_opt_int oc "--height" graph.height ;
-    Array.iter (fun file ->
-      Printf.fprintf oc "%s\n" file.fname ;
-      if file.confname <> "" then
-        Printf.fprintf oc "--confname\n%s\n" file.confname ;
-      save_file_config confdir file) graph.files)
+    Array.iter (function
+        | File file ->
+          Printf.fprintf oc "%s\n" file.File.fname ;
+          if file.File.confname <> "" then
+            Printf.fprintf oc "--confname\n%s\n" file.File.confname ;
+          File.save_config confdir file
+        | Expr expr ->
+          Printf.fprintf oc "%s\n" expr.Expression.expression
+          (* TODO: Expression.save_config *)
+      ) graph.files)
 
 let params_of_graph_config confdir g =
   let confdir = confdir ^"/graphs" in
@@ -286,29 +397,6 @@ let global_options = [| {
   doc = "" ;
   setter = (fun s -> global.default_height <- int_of_string s)
 } |]
-
-(* We create a new graph when we set again a field that has already been set.
- * But for stacked which cannot be compared by address. *)
-
-let default_title = "title"
-and default_y_label = "Y"
-
-let last_field = ref None
-let default_label = "label"
-
-let make_new_field index = {
-  index ; label = default_label ;
-  fmt = Formats.numeric "" ;
-  fmt_was_set = false ;
-  pen = {
-    color = [| 0. ; 0. ; 0. |] ;
-    color_was_set = false ;
-    opacity = 1. ;
-    stroke_width = 1. ;
-    filled = false ;
-    fill_opacity = 0.7 ;
-  }
-}
 
 let chop s n =
   String.sub s n (String.length s - n)
@@ -383,25 +471,10 @@ let parse_options options args =
     ) in
   loop 1
 
-let make_new_file fname =
-  last_field := None ;
-  {
-    fname ; confname = "" ;
-    separator = ',' ;
-    has_header = false ;
-    fd = Unix.stdin ; (* typechecks *)
-    x_field = make_new_field ~-1 ;
-    y1_fields = [| |] ;
-    y2_fields = [| |] ;
-    annot_fields = [| |] ;
-    data_start = 0; size = -1 ;
-    first_x = 0. ; last_x = 0. ;
-    block_size = 1024 ;
-  }
-
 let make_new_graph () = {
   title = default_title ;
   files = [| |] ;
+  x_label = "" ;
   y1_label = default_y_label ;
   y2_label = default_y_label ;
   y1_stacked = NotStacked ;
@@ -439,9 +512,12 @@ let no_renew _ = false
 (* For files we start a new one after each bareword parameter (file name) *)
 let get_current_file () =
   let g = get_current_graph no_renew in
-  if Array.length g.files = 0 then
-    raise (ParseError "Must give the file name before the file options") ;
-  last_entry g.files
+  match last_entry g.files with
+  | exception Invalid_argument _ ->
+    raise (ParseError "Must give the file name before the file options")
+  | File f -> f
+  | Expr _ ->
+    raise (ParseError "Option does not apply to algebraic expression")
 
 let rec load_graph_config confdir g =
   let args = params_of_graph_config confdir g in
@@ -473,6 +549,14 @@ and graph_options = [| {
   setter = (fun s ->
     let renew g = g.y2_label != default_y_label in
     (get_current_graph renew).y2_label <- s) ;
+} ; {
+  names = [| "x-label" |] ;
+  has_param = true ;
+  descr = "Same as label of the x axis" ;
+  doc = "" ;
+  setter = (fun s ->
+    let renew g = g.x_label <> "" in
+    (get_current_graph renew).x_label <- s) ;
 } ; {
   names = [| "stacked" ; "y1-stacked" |] ;
   has_param = false ;
@@ -574,42 +658,61 @@ and file_options = [| {
   setter = (fun s ->
     if String.length s != 1 then
       invalid_arg "separator must be a single character" ;
-    (get_current_file ()).separator <- s.[0]) ;
+    (get_current_file ()).File.separator <- s.[0]) ;
 } ; {
   names = [| "has-header" ; "header" |] ;
   has_param = false ;
   descr = "Does the first line of the CSV has labels" ;
   doc = "" ;
   setter = fun s ->
-    (get_current_file ()).has_header <- bool_of_string s
+    (get_current_file ()).File.has_header <- bool_of_string s
 } ; {
   names = [| |] ;
   has_param = false ;
-  descr = "CSV file" ;
+  descr = "CSV file or algebraic expression" ;
   doc = "" ;
   setter = fun s ->
-    (try (* Check this is a file *)
-      let ic = Unix.(openfile s [ O_RDONLY ] 0o644) in
-      Unix.close ic
-    with _ -> raise Not_found) ;
+    if debug then Printf.eprintf "Adding file %s\n" s ;
+    let f_or_e =
+      try (* Check this is a file *)
+        let ic = Unix.(openfile s [ O_RDONLY ] 0o644) in
+        Unix.close ic ;
+        let f = File.make_new s in
+        (* may not find anything if we use a confname ; we will try again later *)
+        load_file_config global.confdir f ;
+        if debug then Printf.eprintf "...was a file, added\n" ;
+        File f
+      with Unix.Unix_error (Unix.ENOENT, _, _) ->
+        (* Try an algebraic expression *)
+        let open Algebra.P in
+        let e = ParsersBoundedSet.make 0 in
+        let st = Algebra.stream_of_string s in
+        let p = Algebra.operation +- eof in
+        (match p [] None e st |> to_result with
+        | Ok (f, []) ->
+          if debug then Printf.eprintf "...was an expression, added\n" ;
+          Expr (Expression.make_new s f)
+        | Ok _ -> assert false (* Cannot happen *)
+        | Bad _ -> raise Not_found)
+       | _ -> raise Not_found in
     let g = get_current_graph no_renew in
-    let f = make_new_file s in
-    load_file_config global.confdir f ; (* may not find anything if we use a confname ; we will try again later *)
-    g.files <- append g.files f
+    g.files <- append g.files f_or_e ;
+    if debug then Printf.eprintf "Now have %d files\n"
+      (Array.length g.files)
 } ; {
   names = [| "block-size" |] ;
   has_param = true ;
   descr = "any block of that size should contain at least a full line." ;
   doc = "" ;
   setter = (fun s ->
-    (get_current_file ()).block_size <- int_of_string s) ;
+    (get_current_file ()).File.block_size <- int_of_string s) ;
 } ; {
   names = [| "max-line-length" ; "max-line-len" |] ;
   has_param = true ;
   descr = "max line length" ;
   doc = "Including the newline character." ;
   setter = (fun s ->
-    (get_current_file ()).block_size <- 2 * int_of_string s) ;
+    (get_current_file ()).File.block_size <- 2 * int_of_string s) ;
 } ; {
   names = [| "confname" ; "conf-name" ; "config-name" |] ;
   has_param = true ;
@@ -617,7 +720,7 @@ and file_options = [| {
   doc = "" ;
   setter = fun s ->
     let file = get_current_file () in
-    file.confname <- s ;
+    file.File.confname <- s ;
     (* Try again to load the conig (overwriting the cli params that have been set between file name and  --confname) *)
     load_file_config global.confdir file
 } |]
@@ -625,19 +728,19 @@ and file_options = [| {
 (* We create a new field each time we set a value that was already set *)
 
 let get_last_field () =
-  match !last_field with
+  match !Field.last with
   | None -> raise (ParseError "Cannot set a value for a field before giving its index")
   | Some f -> f
 
 let get_current_x_field () =
-  let f = (get_current_file ()).x_field in
-  last_field := Some f ;
+  let f = (get_current_file ()).File.x_field in
+  Field.last := Some f ;
   f
 
 let new_field fields idx =
   assert (idx >= 0) ;
-  let f = make_new_field idx in
-  last_field := Some f ;
+  let f = Field.make_new idx in
+  Field.last := Some f ;
   append fields f
 
 (* TODO: pass also a range of possible values so that we know what
@@ -660,10 +763,10 @@ and field_options = [| {
   doc = "" ;
   setter = fun s ->
     let f = get_current_x_field () in
-    if f.index <> ~-1 then
+    if f.Field.index <> ~-1 then
       raise (ParseError "Set twice the X field") ;
-    f.index <- (int_of_string s - 1) ; (* TODO: index of string that validates >= 0 *)
-    load_field_config global.confdir (get_current_file ()) f.index
+    f.Field.index <- (int_of_string s - 1) ; (* TODO: index of string that validates >= 0 *)
+    load_field_config global.confdir (get_current_file ()) f.Field.index
 } ; {
   names = [| "y" ; "y1" |] ;
   has_param = true ;
@@ -672,7 +775,7 @@ and field_options = [| {
   setter = fun s ->
     let idx = int_of_string s - 1 in
     let file = get_current_file () in
-    file.y1_fields <- new_field file.y1_fields idx ;
+    file.File.y1_fields <- new_field file.File.y1_fields idx ;
     load_field_config global.confdir (get_current_file ()) idx
 } ; {
   names = [| "y2" |] ;
@@ -682,7 +785,7 @@ and field_options = [| {
   setter = fun s ->
     let idx = int_of_string s - 1 in
     let file = get_current_file () in
-    file.y2_fields <- new_field file.y2_fields idx ;
+    file.File.y2_fields <- new_field file.File.y2_fields idx ;
     load_field_config global.confdir (get_current_file ()) idx
 } ; {
   names = [| "annot" ; "y3" |] ;
@@ -692,13 +795,13 @@ and field_options = [| {
   setter = (fun s ->
     let idx = int_of_string s - 1 in
     let file = get_current_file () in
-    file.annot_fields <- new_field file.annot_fields idx) ;
+    file.File.annot_fields <- new_field file.File.annot_fields idx) ;
 } ; {
   names = [| "label" |] ;
   has_param = true ;
   descr = "label for this field" ;
   doc = "" ;
-  setter = (fun s -> (get_last_field ()).label <- s)
+  setter = (fun s -> (get_last_field ()).Field.label <- s)
 } ; {
   names = [| "color" ; "col" |] ;
   has_param = true ;
@@ -706,36 +809,50 @@ and field_options = [| {
   doc = "" ;
   setter = fun s ->
     let field = get_last_field () in
-    field.pen.color_was_set <- true ;
-    field.pen.color <- Color.of_string s
+    field.Field.pen.Pen.color_was_set <- true ;
+    field.Field.pen.Pen.color <- Color.of_string s
 } ; {
   names = [| "opacity" |] ;
   has_param = true ;
   descr = "opacity" ;
   doc = "" ;
   setter = fun s ->
-    (get_last_field ()).pen.opacity <- float_of_string s
+    (get_last_field ()).Field.pen.Pen.opacity <- float_of_string s
 } ; {
   names = [| "fill-opacity" |] ;
   has_param = true ;
   descr = "fill opacity" ;
   doc = "" ;
   setter = fun s ->
-    (get_last_field ()).pen.fill_opacity <- float_of_string s
+    (get_last_field ()).Field.pen.Pen.fill_opacity <- float_of_string s
 } ; {
   names = [| "stroke-width" |] ;
   has_param = true ;
   descr = "stroke width" ;
   doc = "" ;
   setter = fun s ->
-    (get_last_field ()).pen.stroke_width <- float_of_string s
+    (get_last_field ()).Field.pen.Pen.stroke_width <- float_of_string s
 } ; {
   names = [| "filled" ; "fill" |] ;
   has_param = false ;
   descr = "should the area below this value be filled?" ;
   doc = "" ;
   setter = fun s ->
-    (get_last_field ()).pen.filled <- bool_of_string s
+    (get_last_field ()).Field.pen.Pen.filled <- bool_of_string s
+} ; {
+  names = [| "lines" ; "line" ; "draw-lines" ; "draw-line" |] ;
+  has_param = false ;
+  descr = "draw this field as a line" ;
+  doc = "" ;
+  setter = fun s ->
+    (get_last_field ()).Field.pen.Pen.draw_line <- bool_of_string s
+} ; {
+  names = [| "points" ; "point" ; "draw-points" ; "draw-point" |] ;
+  has_param = false ;
+  descr = "draw this field as points" ;
+  doc = "" ;
+  setter = fun s ->
+    (get_last_field ()).Field.pen.Pen.draw_points <- bool_of_string s
 } ; {
   names = [| "format" |] ;
   has_param = true ;
@@ -744,7 +861,7 @@ and field_options = [| {
   setter = fun s ->
     let len = String.length in
     let f = get_last_field () in
-    f.fmt <- List.find_map (fun (fmtname, f) ->
+    f.Field.fmt <- List.find_map (fun (fmtname, f) ->
       if s = fmtname then Some (f "") else
       if String.starts_with s fmtname &&
          s.[len fmtname] = '(' &&
@@ -752,7 +869,7 @@ and field_options = [| {
         Some (f (String.sub s (len fmtname + 1)
                               (len s - len fmtname - 2)))
       else None) Formats.all ;
-    f.fmt_was_set <- true
+    f.Field.fmt_was_set <- true
 } |]
 
 (* Other options are just for this run and not backed by any config file *)
@@ -787,10 +904,10 @@ let other_options = [| {
  *)
 
 let iter_fields file f =
-  f 0 file.x_field ;
-  Array.iter (f 1) file.y1_fields ;
-  Array.iter (f 2) file.y2_fields ;
-  Array.iter (f 3) file.annot_fields
+  f 0 file.File.x_field ;
+  Array.iter (f 1) file.File.y1_fields ;
+  Array.iter (f 2) file.File.y2_fields ;
+  Array.iter (f 3) file.File.annot_fields
 
 let parse_args args =
   (* We want the global and runtime options to be parsed first, and be
@@ -829,34 +946,53 @@ let parse_args args =
       Printf.eprintf "Cannot parse '%s'\n" arg ;
       exit 1) args ;
   (* Arrange configuration *)
-  Array.iter (fun g ->
+  if debug then Printf.eprintf "Arranging configuration of %d graphs...\n"
+    (Array.length !graphs) ;
+  Array.iteri (fun graph_idx g ->
+    if debug then Printf.eprintf "Graph %d has %d files.\n"
+      graph_idx (Array.length g.files) ;
     let nb_fields = Array.make 4 0 in
-    Array.iter (fun file ->
-        (* First: get the labels from the header: *)
-        if file.has_header then (
-          Printf.eprintf "read labels...\n%!" ;
-          let fd = Unix.(openfile file.fname [O_RDONLY; O_CLOEXEC] 0o644) in
-          let str = Read_csv.read_at fd 0 file.block_size in
-          Unix.close fd ;
-          file.data_start <- String.index str '\n' + 1 ;
-          let labels = String.sub str 0 (file.data_start - 1) |>
-                       String.split_on_char file.separator |>
-                       Array.of_list in
-          (* set the label for all fields with default label *)
-          iter_fields file (fun _axis field ->
-            if field.label == default_label then
-              field.label <- labels.(field.index))
-        ) ;
-        iter_fields file (fun axis field ->
-          if not field.pen.color_was_set then
-            field.pen.color <- Color.random_of_string field.label ;
-          nb_fields.(axis) <- nb_fields.(axis) + 1)
+    Array.iter (function
+        | File f ->
+          if debug then Printf.eprintf "Looking at file %s...\n"
+            f.File.fname ;
+          (* Get the labels from the header: *)
+          if f.File.has_header then (
+            if debug then Printf.eprintf "read labels...\n%!" ;
+            let fd = Unix.(openfile f.File.fname [O_RDONLY; O_CLOEXEC] 0o644) in
+            (* File size is not yet known *)
+            let sz = Read_csv.file_size fd in
+            let str =
+              Read_csv.read_at fd 0 (min sz f.File.block_size) in
+            Unix.close fd ;
+            f.File.data_start <- String.index str '\n' + 1 ;
+            let labels = String.sub str 0 (f.File.data_start - 1) |>
+                         String.split_on_char f.File.separator |>
+                         Array.of_list in
+            if debug then Printf.eprintf "labels = %a\n"
+                            (Array.print String.print) labels ;
+            (* set the label for all fields with default label *)
+            iter_fields f (fun _axis field ->
+              if field.Field.label == default_label then
+                field.Field.label <- labels.(field.Field.index))
+          ) ;
+          iter_fields f (fun axis field ->
+            if debug then Printf.eprintf "Considering field idx %d\n"
+              field.Field.index ;
+            if not field.Field.pen.Pen.color_was_set then
+              field.Field.pen.Pen.color <-
+                Color.random_of_string field.Field.label ;
+            nb_fields.(axis) <- nb_fields.(axis) + 1)
+        | Expr expr ->
+          if debug then Printf.eprintf "Looking at expression %s\n"
+            expr.Expression.expression
+          (* TODO *)
       ) g.files ;
-    if nb_fields.(0) != 1 then (
-      Printf.eprintf "You must have 1 X field.\n" ;
-      exit 1) ;
+    if debug then Printf.eprintf "How many fields per axis: %a\n"
+      (Array.print Int.print) nb_fields ;
     if nb_fields.(1) + nb_fields.(2) < 1 then (
-      Printf.eprintf "You must have at least 1 Y field.\n" ;
+      Printf.eprintf "You must have at least 1 Y field if graph %d.\n"
+        graph_idx ;
       exit 1) ;
     if not g.draw_legend_was_set then
       g.draw_legend <-
@@ -870,23 +1006,4 @@ let parse_args args =
       save_graph_config global.confdir g) !graphs
   )
 
-(* Refresh a config file info *)
-let update_file_info f =
-  Printf.eprintf "  Check file %s...\n" f.fname ;
-  f.fd <- Unix.(openfile f.fname [O_RDONLY; O_CLOEXEC] 0o644) ;
-  let sz = Read_csv.file_size f.fd in
-  if sz <> f.size then (
-    f.size <- sz ;
-    Printf.eprintf "    size is now %d\n" sz ;
-    (try
-      f.last_x <-
-        Read_csv.get_last_x f.fd f.size f.block_size f.separator f.x_field.index f.x_field.fmt.Formats.to_value ;
-      Printf.eprintf "    last x is now %f\n" f.last_x
-     with Not_found -> ()) ;
-    if f.first_x = 0. then
-      (try
-        f.first_x <-
-          Read_csv.get_first_x f.fd f.data_start f.size f.block_size f.separator f.x_field.index f.x_field.fmt.Formats.to_value ;
-        Printf.eprintf "    first x is now %f\n" f.first_x
-       with Not_found -> ()) ;
-  )
+

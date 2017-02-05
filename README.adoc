@@ -167,12 +167,12 @@ probably desirable anyway, and then we could filters.
 
 == data sources
 
-Implement a quote character in addition to the field separator.  Also: a way to
-use a column as factors: +-x 1 -y 2 -factors 3,6+ Requires to read all the
+Implement a quote character in addition to the field separator.  Also: a way
+to use a column as factors: +-x 1 -y 2 -factors 3,6+ Requires to read all the
 lines for a given T not just one, still assuming proper ordering. Then the
-following parameters would apply to all fields created. The problem is we don't
-know in advance how many factors we will have and have to scan the whole file
-first :-(
+following parameters would apply to all fields created. The problem is we
+don't know in advance how many factors we will have and have to scan the whole
+file first :-(
 
 == AutoSaving configuration
 
@@ -237,5 +237,4 @@ date,with,without
 ----
 
 image::chicago1.svg[width=800,height=600]
-
 

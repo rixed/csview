@@ -164,7 +164,7 @@ type fold_t = {
     (* The bool in there is true for all plots in the "primary" chart, and
      * false once at most for the "secondary" plot. Note: the secondary plot
      * is displayed with a distinct Y axis. *)
-    fold : 'a. ('a -> pen -> label -> bool -> (int -> float) -> 'a) -> 'a -> 'a }
+    fold : 'a. ('a -> Pen.t -> label -> bool -> (int -> float) -> 'a) -> 'a -> 'a }
             (* I wonder what's the world record in argument list length? *)
 let xy_plot ?(string_of_y=my_string_of_float)
             ?(string_of_y2=my_string_of_float)
@@ -253,34 +253,41 @@ let xy_plot ?(string_of_y=my_string_of_float)
     let pi = if prim then 0 else 1 in
     let is_stacked = stacked.(pi) <> NotStacked && prim in
     let label_str = string_of_label label in
-    let stroke = Color.to_html pen.color in
+    let stroke = Color.to_html pen.Pen.color in
+    let p = [] in
+    let p = if pen.Pen.draw_line then (
       path ~stroke:stroke
-       ~stroke_width:pen.stroke_width
-       ~stroke_opacity:pen.opacity
-       ~fill:(if pen.filled then stroke else "none")
-       ?fill_opacity:(if pen.filled then Some pen.fill_opacity else None)
-       ~attrs:["class","fitem "^ label_str]
-      (
-        let buf = Buffer.create 100 in (* to write path commands in *)
-        (* Top line *)
-        for i = 0 to nb_vx-1 do
-          let vy' = (get i |> rate_of_vy) +. (if is_stacked then prev_vy.(i) else 0.) in
-          Buffer.add_string buf
-            ((if i = 0 then moveto else lineto)
-             (get_x (vx_of_bucket i),
-              get_y pi vy'))
-        done ;
-        if pen.filled || is_stacked then (
-          (* Bottom line (to close the area) (note: we loop here from last to first) *)
-          for i = nb_vx-1 downto 0 do
-            let vy' = prev_vy.(i) in
-            prev_vy.(i) <- vy' +. (get i |> rate_of_vy) ;
+         ~stroke_width:pen.Pen.stroke_width
+         ~stroke_opacity:pen.Pen.opacity
+         ~fill:(if pen.Pen.filled then stroke else "none")
+         ?fill_opacity:(if pen.Pen.filled then Some pen.Pen.fill_opacity else None)
+         ~attrs:["class","fitem "^ label_str]
+        (
+          let buf = Buffer.create 100 in (* to write path commands in *)
+          (* Top line *)
+          for i = 0 to nb_vx-1 do
+            let vy' = (get i |> rate_of_vy) +. (if is_stacked then prev_vy.(i) else 0.) in
             Buffer.add_string buf
-              (lineto (get_x (vx_of_bucket i), get_y pi vy'))
+              ((if i = 0 then moveto else lineto)
+               (get_x (vx_of_bucket i),
+                get_y pi vy'))
           done ;
-          Buffer.add_string buf closepath) ;
-        Buffer.contents buf
-      ) in
+          if pen.Pen.filled || is_stacked then (
+            (* Bottom line (to close the area) (note: we loop here from last to first) *)
+            for i = nb_vx-1 downto 0 do
+              let vy' = prev_vy.(i) in
+              prev_vy.(i) <- vy' +. (get i |> rate_of_vy) ;
+              Buffer.add_string buf
+                (lineto (get_x (vx_of_bucket i), get_y pi vy'))
+            done ;
+            Buffer.add_string buf closepath) ;
+          Buffer.contents buf
+        )
+      )::p else p in
+    let p = if pen.Pen.draw_points then (
+        (* TODO *) p
+      ) else p in
+    g p in
   let avg_char_width = 0.6 in
   let nb_y, max_label_width = fold.fold (fun (nb_y, w) _pen label _prim _get ->
     let label_str = string_of_label label in
@@ -313,7 +320,7 @@ let xy_plot ?(string_of_y=my_string_of_float)
     let nb_y = float_of_int (nb_y1 + nb_y2) in
     let y = outer_margin_vert +. inner_margin_vert +. legend_row_height *. nb_y in
     let s = g [
-      rect ~fill:(Color.to_html pen.color) ~fill_opacity:1.
+      rect ~fill:(Color.to_html pen.Pen.color) ~fill_opacity:1.
            ~stroke_width:1. ~stroke:"#000"
            (outer_margin_horiz +. inner_margin_horiz) y
            legend_box_width legend_font_size ;

@@ -4,7 +4,7 @@ PKG_NAME = csview
 
 CSVIEW_SOURCES = \
 	color.ml formats.ml \
-	read_csv.ml \
+	algebra.ml read_csv.ml \
 	compilConfig.ml config.ml \
 	chart.ml csview.ml
 
@@ -48,14 +48,14 @@ doc: README.html
 
 # Tests
 
-all_tests.ml: TestEnv.ml read_csv.ml compilConfig.ml config.ml formats.ml
+all_tests.ml: read_csv.ml config.ml formats.ml algebra.ml
 	$(QTEST) --shuffle --preamble 'open Batteries;; open TestEnv' -o $@ extract $^
 
-all_tests.opt: TestEnv.cmx color.cmx formats.cmx compilConfig.cmx read_csv.cmx config.cmx all_tests.ml
+all_tests.opt: color.cmx formats.cmx compilConfig.cmx read_csv.cmx algebra.cmx config.cmx TestEnv.ml all_tests.ml
 	$(OCAMLOPT) -o $@ $(SYNTAX) -package "$(REQUIRES) qcheck" -linkpkg $(OCAMLOPTFLAGS) $^
 
 check: all_tests.opt
-	./all_tests.opt || echo "FAILURE"
+	@./all_tests.opt || echo "FAILURE"
 
 # Dependencies
 
