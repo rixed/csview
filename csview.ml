@@ -94,6 +94,21 @@ let http_msg_of_file fname =
     ] ;
     body })
 
+(* return a getter displaying the linear regression of the given getter, for n points *)
+let linear_regression_getter getter n =
+  let nf_inv = 1.0 /. float_of_int n in
+  let rec loop i x_sum y_sum xy_sum x2_sum =
+    if i >= n then (
+      let b = (xy_sum -. x_sum *. y_sum *. nf_inv) /. (x2_sum -. x_sum *. x_sum *. nf_inv) in
+      let a = (y_sum -. b *. x_sum) *. nf_inv in
+      a, b
+    ) else (
+      let x = float_of_int i and y = getter i in
+      loop (i+1) (x_sum +. x) (y_sum +. y) (xy_sum +. x *. y) (x2_sum +. x *. x)
+    ) in
+  let a, b = loop 0 0.0 0.0 0.0 0.0 in
+  fun i -> a +. b *. float_of_int i
+
 let get_svg g n t1 t2 =
   let open Config in
   let open File in
@@ -124,7 +139,10 @@ let get_svg g n t1 t2 =
                   let y, _ = Read_csv.extract_field line file.separator 0 field.index field.fmt.Formats.to_value in
                   y) lines in
                 let getter ts_idx = ys.(ts_idx) in
-                (field.pen, pri, getter) :: prev)
+                let prev = (field.pen, pri, getter) :: prev in
+                if field.linear_regression then
+                  (field.pen, pri, linear_regression_getter getter n)::prev
+                else prev)
           | Expr expr ->
             let open Expr in
             let dt = t2 -. t1 in
