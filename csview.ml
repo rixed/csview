@@ -98,52 +98,46 @@ let get_svg g n t1 t2 =
   let open Config in
   let open File in
   let open Field in
-  let nb_fields_of_file file =
-    Array.length file.y1_fields +
-    Array.length file.y2_fields (* TODO: annotation *) in
-  let nth_field_of_file file n =
-    if n < Array.length file.y1_fields then
-      file.y1_fields.(n), true
-    else (
-      let n = n - Array.length file.y1_fields in
-      if n < Array.length file.y2_fields then
-        file.y2_fields.(n), false
-      else (
-        (* annotations *)
-        assert false
-      )
-    ) in
-  let map_fields file f =
-    Array.init (nb_fields_of_file file) (fun n ->
-      let field, pri = nth_field_of_file file n in
-      f field pri) in
+  let fold_fields file init f =
+    let prev = Array.fold_left (fun prev field ->
+      f prev field true) init file.y1_fields in
+    let prev = Array.fold_left (fun prev field ->
+      f prev field false) prev file.y2_fields in
+    (* TODO: annotations *)
+    prev in
   let nf = float_of_int (n-1) in
   (* The fold below must iterate over all fields of all files of this graph.
-   * data.(file_idx).(field_idx) = pen, label, pri, getter *)
+   * data.(file_idx) = (pen, label, pri, getter) list ;
+   * notice that we might have more "fields" here than we have in a file
+   * because a given field may be redered using several ones (for linear
+   * regressions, envelopes, stddevs...) *)
   let data =
     with_timing "reading data" (fun () ->
-      Array.map (function
+      Array.map (fun src -> match src with
           | File file ->
-            let lines = Read_csv.read_all file.fd file.x_field.index file.separator file.x_field.fmt.Formats.to_value file.block_size file.data_start file.size file.bounds.first_x file.bounds.last_x n t1 t2 in
-            map_fields file (fun field pri ->
+            let x_field = Option.get file.x_field in
+            let lines = Read_csv.read_all file.fd x_field.index file.separator x_field.fmt.Formats.to_value file.block_size file.data_start file.size file.bounds.first_x file.bounds.last_x n t1 t2 in
+            (* FIXME: instead of looping over field and then lines it would be faster to loop over lines and then fields,
+             * thus we do not even need to store the lines *)
+            fold_fields file [] (fun prev field pri ->
                 let ys = Array.map (fun (_ts, line) ->
                   let y, _ = Read_csv.extract_field line file.separator 0 field.index field.fmt.Formats.to_value in
                   y) lines in
                 let getter ts_idx = ys.(ts_idx) in
-                field.pen, field.label, pri, getter)
+                (field.pen, field.label, pri, getter) :: prev)
           | Expr expr ->
-            let open Expression in
+            let open Expr in
             let dt = t2 -. t1 in
             let getter ts_idx =
               let ts = t1 +.  dt *. (float_of_int ts_idx) /. nf in
               expr.funct ts in
-            [| expr.pen, expr.label, expr.on_y1_axis, getter |]
-        ) g.files)
+            [ expr.pen, expr.label, expr.on_y1_axis, getter ]
+        ) g.Graph.files)
   in
   (* The fold function is supposed to accumulate over all datasets *)
   let fold = { Chart.fold = fun f init ->
     Array.fold_left (fun prev file_data ->
-        Array.fold_left (fun prev (pen, label, pri, getter) ->
+        List.fold_left (fun prev (pen, label, pri, getter) ->
             f prev pen label pri getter
           ) prev file_data
       ) init data } in
@@ -158,8 +152,8 @@ let get_svg g n t1 t2 =
           field.fmt_was_set) fields in
         Some field.fmt.Formats.to_label
       with Not_found -> None in
-    Array.fold_left (fun (fmt1, fmt2 as prev) f_or_e ->
-        match f_or_e with
+    Array.fold_left (fun (fmt1, fmt2 as prev) source ->
+        match source with
         | File file ->
           let fmt1 = (match fmt1 with
             | None -> get_first_fmt file.y1_fields
@@ -169,31 +163,32 @@ let get_svg g n t1 t2 =
             | _ -> fmt2) in
           fmt1, fmt2
         | Expr _ -> prev
-      ) (None, None) g.files in
-    let file0 = match g.files.(0) with
-      | File f -> f
-      | Expr _ -> failwith "First data source must be a file" in
+      ) (None, None) g.Graph.files in
+    let file0 =
+      Array.enum g.Graph.files |> Enum.find_map (function
+        | File f -> Some f | Expr _ -> None) in
+    let x_field0 = Option.get file0.x_field in
     let x_label =
-      if g.x_label <> "" then g.x_label else file0.x_field.label in
+      if g.Graph.x_label <> "" then g.Graph.x_label else x_field0.label in
     with_timing "building SVG" (fun () ->
-      Chart.xy_plot ~string_of_x:file0.x_field.fmt.Formats.to_label
+      Chart.xy_plot ~string_of_x:x_field0.fmt.Formats.to_label
                     ?string_of_y ?string_of_y2
-                    ~svg_width:(float_of_int (g.width |? global.default_width))
-                    ~svg_height:(float_of_int (g.height |? global.default_height))
-                    ~axis_font_size:g.font_size
-                    ~draw_legend:g.draw_legend
-                    ~stacked_y1:g.y1_stacked
-                    ~stacked_y2:g.y2_stacked
-                    ~force_show_0:g.force_show_0
-                    ~x_base:file0.x_field.fmt.Formats.base
+                    ~svg_width:(float_of_int (g.Graph.width |? global.default_width))
+                    ~svg_height:(float_of_int (g.Graph.height |? global.default_height))
+                    ~axis_font_size:g.Graph.font_size
+                    ~draw_legend:g.Graph.draw_legend
+                    ~stacked_y1:g.Graph.y1_stacked
+                    ~stacked_y2:g.Graph.y2_stacked
+                    ~force_show_0:g.Graph.force_show_0
+                    ~x_base:x_field0.fmt.Formats.base
                     ?y1_base:(try Some file0.y1_fields.(0).fmt.Formats.base
                               with Invalid_argument _ -> None)
                     ?y2_base:(try Some file0.y2_fields.(0).fmt.Formats.base
                               with Invalid_argument _ -> None)
-                    ?x_tick_spacing:g.x_tick_spacing
-                    ?y_tick_spacing:g.y_tick_spacing
+                    ?x_tick_spacing:g.Graph.x_tick_spacing
+                    ?y_tick_spacing:g.Graph.y_tick_spacing
                     x_label
-                    g.y1_label
+                    g.Graph.y1_label
                     t1 vx_step n fold)
 
 let get_graph oc params =
@@ -202,7 +197,7 @@ let get_graph oc params =
   let default v f = try f () with Not_found -> v in
   let gi = default 0 (fun () -> get "g" |> int_of_string) in
   let g = !graphs.(gi) in
-  let bounds = bounds_of_file g.files.(0) in
+  let bounds = Source.bounds g.Graph.files.(0) in
   let t1 = default bounds.first_x (fun () -> get "t1" |> float_of_string)
   and t2 = default bounds.last_x (fun () -> get "t2" |> float_of_string)
   and n = default 100 (fun () -> get "n" |> int_of_string) in
@@ -213,18 +208,18 @@ let get_graph oc params =
 let make_index_html _params =
   (* Can't be static because it depends on the number of graphs. *)
   let html_of_graph g i =
-    let attrs = [
-      "width", string_of_int Config.(g.width |? global.default_width) ;
-      "height", string_of_int Config.(g.height |? global.default_height) ] in
-    let id = "graph_"^ string_of_int i in
     let open Config in
-    let bounds = bounds_of_file g.files.(0) in
-    let t1 = g.x_start |? bounds.first_x
-    and t2 = g.x_stop  |? bounds.last_x in
+    let attrs = [
+      "width", string_of_int (g.Graph.width |? global.default_width) ;
+      "height", string_of_int (g.Graph.height |? global.default_height) ] in
+    let id = "graph_"^ string_of_int i in
+    let bounds = Source.bounds g.Graph.files.(0) in
+    let t1 = g.Graph.x_start |? bounds.first_x
+    and t2 = g.Graph.x_stop  |? bounds.last_x in
     let url = "/graph.svg?g="^ string_of_int i ^
               "&t1="^ string_of_float t1 ^"&t2="^ string_of_float t2 in
     Html.Block (
-      (if g.title <> "" then [ Html.h2 g.title ] else []) @
+      (if g.Graph.title <> "" then [ Html.h2 g.Graph.title ] else []) @
       [ Html.img ~attrs ~id url ]) in
   let html_of_graphs gs =
     let rec loop prev i =
@@ -286,7 +281,7 @@ let server_or_kaputt ic oc =
   Printf.printf "New server, opening all files.\n%!" ;
   Array.iter (fun g ->
       let open Config in
-      assert (Array.length g.files > 0) ;
+      assert (Array.length g.Graph.files > 0) ;
       let total_bounds = { first_x = max_float ; last_x = min_float } in
       let update_total_bounds b =
         if b.first_x < total_bounds.first_x then
@@ -297,33 +292,33 @@ let server_or_kaputt ic oc =
         | File file ->
           File.update_info file ;
           update_total_bounds file.File.bounds
-        | Expr _ -> ()) g.files ;
+        | Expr _ -> ()) g.Graph.files ;
       (* Set expression bounds to total_bounds.
        * TODO: allow to enter bounds of expression from the command line *)
       Array.iter (function
         | File _ -> ()
         | Expr e ->
           (* from now on bounds of expressions are read only *)
-          e.Expression.bounds <- total_bounds) g.files ;
+          e.Expr.bounds <- total_bounds) g.Graph.files ;
       (* Now that we have field labels try to use them to arrange axis
        * labels: *)
-      if g.y1_label = default_y_label then (
+      if g.Graph.y1_label = default_y_label then (
         match Array.find (function
           | File file ->
             Array.length file.File.y1_fields > 0
-          | Expr _ -> true) g.files with
+          | Expr _ -> true) g.Graph.files with
         | exception Not_found -> ()
-        | File file -> g.y1_label <- file.File.y1_fields.(0).Field.label
-        | Expr expr -> g.y1_label <- expr.Expression.label
+        | File file -> g.Graph.y1_label <- file.File.y1_fields.(0).Field.label
+        | Expr expr -> g.Graph.y1_label <- expr.Expr.label
       ) ;
-      if g.y2_label = default_y_label then (
+      if g.Graph.y2_label = default_y_label then (
         match Array.find (function
           | File file ->
             Array.length file.File.y2_fields > 0
-          | Expr _ -> true) g.files with
+          | Expr _ -> true) g.Graph.files with
         | exception Not_found -> ()
-        | File file -> g.y2_label <- file.File.y2_fields.(0).Field.label
-        | Expr expr -> g.y2_label <- expr.Expression.label
+        | File file -> g.Graph.y2_label <- file.File.y2_fields.(0).Field.label
+        | Expr expr -> g.Graph.y2_label <- expr.Expr.label
       )
     ) !Config.graphs ;
   try server ic oc
@@ -372,11 +367,11 @@ let () =
   parse_args Sys.argv ;
   if !output_svg then (
     let g = !graphs.(0) in
-    assert (Array.length g.files > 0) ;
+    assert (Array.length g.Graph.files > 0) ;
     Array.iter (function
       | File file -> Config.File.update_info file
-      | Expr _ -> ()) g.files ;
-    let bounds = bounds_of_file g.files.(0) in
+      | Expr _ -> ()) g.Graph.files ;
+    let bounds = Source.bounds g.Graph.files.(0) in
     let t1 = bounds.first_x
     and t2 = bounds.last_x
     and n = 100 in
