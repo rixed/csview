@@ -43,9 +43,10 @@ module Pen = struct
     mutable fill_opacity : float ;
     mutable draw_line : bool ;
     mutable draw_points : bool ;
+    mutable label : string ;
   }
   let current : t option ref = ref None
-  let make_new () =
+  let make_new ?(label=default_label) () =
     let t = {
       color = [| 0. ; 0. ; 0. |] ;
       color_was_set = false ;
@@ -55,6 +56,7 @@ module Pen = struct
       fill_opacity = 0.7 ;
       draw_line = true ;
       draw_points = false ;
+      label ;
     } in
     current := Some t ;
     t
@@ -63,19 +65,20 @@ module Pen = struct
       Printf.fprintf oc "%s%s%s\
                          --color\n%s\n\
                          --opacity\n%f\n\
+                         --label\n%s\n\
                          --fill-opacity\n%f\n"
                 (if pen.filled then "--filled\n" else "")
                 (if pen.draw_line then "--line\n" else "")
                 (if pen.draw_points then "--points\n" else "")
                 (Color.to_string pen.color)
                 pen.opacity
+                pen.label
                 pen.fill_opacity
 end
 
 module Field = struct
   type t = {
     mutable index : int ;
-    mutable label : string ;
     mutable fmt : Formats.t ;
     mutable fmt_was_set : bool ; (* track those that were explicitly set *)
     mutable pen : Pen.t ;
@@ -87,7 +90,7 @@ module Field = struct
    * But for stacked which cannot be compared by address. *)
   let make_new index =
     let t = {
-      index ; label = default_label ;
+      index ;
       fmt = Formats.numeric "" ;
       fmt_was_set = false ;
       pen = Pen.make_new () ;
@@ -99,9 +102,8 @@ module Field = struct
   let save_config confdir f =
     let fname = string_of_int f.index in
     with_save_file confdir fname (fun oc ->
-      Printf.fprintf oc "--label\n%s\n\
-                         --format\n%s\n"
-        f.label f.fmt.Formats.name ;
+      Printf.fprintf oc "--format\n%s\n"
+        f.fmt.Formats.name ;
       if f.linear_regression then
         Printf.fprintf oc "--linear-regression\n" ;
       Pen.save_config oc f.pen)
@@ -195,7 +197,6 @@ module Expr = struct
   type t = {
     expression : string ;
     funct : float -> float ;
-    mutable label : string ;
     mutable pen : Pen.t ;
     mutable on_y1_axis : bool ;
     mutable bounds : bounds
@@ -209,8 +210,7 @@ module Expr = struct
       | Imm v -> fun _ -> v
       | Fun f -> f) ;
     on_y1_axis = true ;
-    label = default_label ;
-    pen = Pen.make_new () ;
+    pen = Pen.make_new ~label:expression () ;
     bounds = { first_x = 0. ; last_x = 0. } ;
   }
 end
@@ -260,7 +260,7 @@ module Graph = struct
   type t = {
     mutable title : string ;
     mutable files : data_source array ;
-    mutable x_label : string ; (* or use files.(0).x_field.label *)
+    mutable x_label : string ; (* or use files.(0).x_field.pen.label - allows to set either label at the field level or at the graph level. *)
     mutable y1_label : string ;
     mutable y2_label : string ;
     mutable y1_stacked : stacked ;
@@ -352,10 +352,11 @@ let save_graph_config confdir g =
   with_save_file (confdir ^"/graphs") (to_fname g.Graph.title) (fun oc ->
     Printf.fprintf oc "--y1-label\n%s\n\
                        --y2-label\n%s\n\
+                       --x-label\n%s\n\
                        %s\n%s\n\
                        --font-size\n%f\n\
                        --legend\n%s\n"
-      g.Graph.y1_label g.Graph.y2_label
+      g.Graph.y1_label g.Graph.y2_label g.Graph.x_label
       (string_of_stacked "y1" g.Graph.y1_stacked)
       (string_of_stacked "y2" g.Graph.y2_stacked)
       g.Graph.font_size
@@ -834,7 +835,7 @@ and field_options = [| {
   has_param = true ;
   descr = "label for this field" ;
   doc = "" ;
-  setter = (fun s -> (get_current_field ()).Field.label <- s)
+  setter = (fun s -> (get_current_pen ()).Pen.label <- s)
 } ; {
   names = [| "color" ; "col" |] ;
   has_param = true ;
@@ -1018,25 +1019,27 @@ let parse_args args =
                             (Array.print String.print) labels ;
             (* set the label for all fields with default label *)
             iter_fields f (fun _axis field ->
-              if field.Field.label == default_label then
-                field.Field.label <- labels.(field.Field.index))
+              if field.Field.pen.Pen.label == default_label then
+                field.Field.pen.Pen.label <- labels.(field.Field.index))
           ) ;
           iter_fields f (fun axis field ->
             if debug then Printf.eprintf "Considering field idx %d\n"
               field.Field.index ;
             if not field.Field.pen.Pen.color_was_set then
               field.Field.pen.Pen.color <-
-                Color.random_of_string field.Field.label ;
+                Color.random_of_string field.Field.pen.Pen.label ;
             nb_fields.(axis) <- nb_fields.(axis) + 1)
         | Expr expr ->
           if debug then Printf.eprintf "Looking at expression %s\n"
-            expr.Expr.expression
+            expr.Expr.expression ;
+            let axis = if expr.Expr.on_y1_axis then 1 else 2 in
+            nb_fields.(axis) <- nb_fields.(axis) + 1
           (* TODO *)
       ) g.Graph.files ;
     if debug then Printf.eprintf "How many fields per axis: %a\n"
       (Array.print Int.print) nb_fields ;
     if nb_fields.(1) + nb_fields.(2) < 1 then (
-      Printf.eprintf "You must have at least 1 Y field if graph %d.\n"
+      Printf.eprintf "You must have at least 1 Y field in graph %d.\n"
         graph_idx ;
       exit 1) ;
     if not g.Graph.draw_legend_was_set then

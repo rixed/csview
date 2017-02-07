@@ -124,21 +124,21 @@ let get_svg g n t1 t2 =
                   let y, _ = Read_csv.extract_field line file.separator 0 field.index field.fmt.Formats.to_value in
                   y) lines in
                 let getter ts_idx = ys.(ts_idx) in
-                (field.pen, field.label, pri, getter) :: prev)
+                (field.pen, pri, getter) :: prev)
           | Expr expr ->
             let open Expr in
             let dt = t2 -. t1 in
             let getter ts_idx =
               let ts = t1 +.  dt *. (float_of_int ts_idx) /. nf in
               expr.funct ts in
-            [ expr.pen, expr.label, expr.on_y1_axis, getter ]
+            [ expr.pen, expr.on_y1_axis, getter ]
         ) g.Graph.files)
   in
   (* The fold function is supposed to accumulate over all datasets *)
   let fold = { Chart.fold = fun f init ->
     Array.fold_left (fun prev file_data ->
-        List.fold_left (fun prev (pen, label, pri, getter) ->
-            f prev pen label pri getter
+        List.fold_left (fun prev (pen, pri, getter) ->
+            f prev pen pri getter
           ) prev file_data
       ) init data } in
   let vx_step = (t2-.t1) /. float_of_int (n-1) in
@@ -169,7 +169,7 @@ let get_svg g n t1 t2 =
         | File f -> Some f | Expr _ -> None) in
     let x_field0 = Option.get file0.x_field in
     let x_label =
-      if g.Graph.x_label <> "" then g.Graph.x_label else x_field0.label in
+      if g.Graph.x_label <> "" then g.Graph.x_label else x_field0.pen.Pen.label in
     with_timing "building SVG" (fun () ->
       Chart.xy_plot ~string_of_x:x_field0.fmt.Formats.to_label
                     ?string_of_y ?string_of_y2
@@ -308,8 +308,8 @@ let server_or_kaputt ic oc =
             Array.length file.File.y1_fields > 0
           | Expr _ -> true) g.Graph.files with
         | exception Not_found -> ()
-        | File file -> g.Graph.y1_label <- file.File.y1_fields.(0).Field.label
-        | Expr expr -> g.Graph.y1_label <- expr.Expr.label
+        | File file -> g.Graph.y1_label <- file.File.y1_fields.(0).Field.pen.Pen.label
+        | Expr expr -> g.Graph.y1_label <- expr.Expr.pen.Pen.label
       ) ;
       if g.Graph.y2_label = default_y_label then (
         match Array.find (function
@@ -317,8 +317,8 @@ let server_or_kaputt ic oc =
             Array.length file.File.y2_fields > 0
           | Expr _ -> true) g.Graph.files with
         | exception Not_found -> ()
-        | File file -> g.Graph.y2_label <- file.File.y2_fields.(0).Field.label
-        | Expr expr -> g.Graph.y2_label <- expr.Expr.label
+        | File file -> g.Graph.y2_label <- file.File.y2_fields.(0).Field.pen.Pen.label
+        | Expr expr -> g.Graph.y2_label <- expr.Expr.pen.Pen.label
       )
     ) !Config.graphs ;
   try server ic oc

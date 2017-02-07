@@ -164,7 +164,7 @@ type fold_t = {
     (* The bool in there is true for all plots in the "primary" chart, and
      * false once at most for the "secondary" plot. Note: the secondary plot
      * is displayed with a distinct Y axis. *)
-    fold : 'a. ('a -> Pen.t -> label -> bool -> (int -> float) -> 'a) -> 'a -> 'a }
+    fold : 'a. ('a -> Pen.t -> bool -> (int -> float) -> 'a) -> 'a -> 'a }
             (* I wonder what's the world record in argument list length? *)
 let xy_plot ?(string_of_y=my_string_of_float)
             ?(string_of_y2=my_string_of_float)
@@ -187,8 +187,8 @@ let xy_plot ?(string_of_y=my_string_of_float)
   let stacked = [| stacked_y1 ; stacked_y2 |] in
   let y_label_grid = if show_rate then y_label ^"/"^ (x_label_for_rate |? x_label) else y_label in
   (* build iter and map from fold *)
-  let iter_datasets f = fold.fold (fun _prev pen label prim get -> f pen label prim get) ()
-  and map_datasets f = List.rev @@ fold.fold (fun prev pen label prim get -> (f pen label prim get) :: prev) []
+  let iter_datasets f = fold.fold (fun _prev pen prim get -> f pen prim get) ()
+  and map_datasets f = List.rev @@ fold.fold (fun prev pen prim get -> (f pen prim get) :: prev) []
   and rate_of_vy vy = if show_rate then vy /. vx_step else vy in
   (* Graph geometry in pixels *)
   let max_label_length = y_tick_spacing *. 0.9 in
@@ -210,8 +210,8 @@ let xy_plot ?(string_of_y=my_string_of_float)
     else
       (* sum the Ys *)
       (fun i c -> max_vy.(pi).(i) <- max_vy.(pi).(i) +. c) in
-  iter_datasets (fun _pen label prim get ->
-    if not prim then label2 := Some label ;
+  iter_datasets (fun pen prim get ->
+    if not prim then label2 := Some pen.Pen.label ;
     let pi = if prim then 0 else 1 in
     for i = 0 to nb_vx-1 do set_max pi i (get i |> rate_of_vy) done) ;
   (* TODO: if vy_min is close to 0 (compared to vy_max) then clamp it to 0 *)
@@ -241,18 +241,18 @@ let xy_plot ?(string_of_y=my_string_of_float)
   (* per chart infos *)
   let tot_vy = Hashtbl.create 11
   and tot_vys = ref 0. in
-  iter_datasets (fun _pen lbl prim get ->
+  iter_datasets (fun pen prim get ->
     if prim then for i = 0 to nb_vx-1 do
       let vy = get i in
       tot_vys := !tot_vys +. vy ;
-      Hashtbl.modify_def 0. lbl ((+.) vy) tot_vy
+      Hashtbl.modify_def 0. pen.Pen.label ((+.) vy) tot_vy
     done) ;
   Formats.reset_all_states () ;
   (* The SVG *)
-  let path_of_dataset pen label prim get =
+  let path_of_dataset pen prim get =
     let pi = if prim then 0 else 1 in
     let is_stacked = stacked.(pi) <> NotStacked && prim in
-    let label_str = string_of_label label in
+    let label_str = string_of_label pen.Pen.label in
     let stroke = Color.to_html pen.Pen.color in
     let p = [] in
     let p = if pen.Pen.draw_line then (
@@ -289,8 +289,8 @@ let xy_plot ?(string_of_y=my_string_of_float)
       ) else p in
     g p in
   let avg_char_width = 0.6 in
-  let nb_y, max_label_width = fold.fold (fun (nb_y, w) _pen label _prim _get ->
-    let label_str = string_of_label label in
+  let nb_y, max_label_width = fold.fold (fun (nb_y, w) pen _prim _get ->
+    let label_str = string_of_label pen.Pen.label in
     let label_width = legend_font_size *. avg_char_width *.
                       float_of_int (String.length label_str) in
     nb_y +. 1., max w label_width) (0., 0.) in
@@ -311,8 +311,8 @@ let xy_plot ?(string_of_y=my_string_of_float)
                     svg_height -. outer_margin -. nb_y *. legend_row_height
     | BottomRight -> svg_width -. outer_margin -.  legend_width,
                      svg_height -. outer_margin -. nb_y *. legend_row_height in
-  let legend_of_dataset (nb_y1, nb_y2, width, svg) pen label prim _get =
-    let label_str = string_of_label label in
+  let legend_of_dataset (nb_y1, nb_y2, width, svg) pen prim _get =
+    let label_str = string_of_label pen.Pen.label in
     let label_width =
       legend_font_size *. 0.6 *. float_of_int (String.length label_str) in
     let row_width = legend_box_width +. label_width in
