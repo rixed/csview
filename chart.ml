@@ -259,6 +259,7 @@ let xy_plot ?(string_of_y=my_string_of_float)
       path ~stroke:stroke
          ~stroke_width:pen.Pen.stroke_width
          ~stroke_opacity:pen.Pen.opacity
+         ?stroke_dasharray:pen.Pen.dasharray
          ~fill:(if pen.Pen.filled then stroke else "none")
          ?fill_opacity:(if pen.Pen.filled then Some pen.Pen.fill_opacity else None)
          ~attrs:["class","fitem "^ label_str]

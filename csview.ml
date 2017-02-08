@@ -141,7 +141,8 @@ let get_svg g n t1 t2 =
                 let getter ts_idx = ys.(ts_idx) in
                 let prev = (field.pen, pri, getter) :: prev in
                 if field.linear_regression then
-                  (field.pen, pri, linear_regression_getter getter n)::prev
+                  ({ field.pen with Pen.dasharray = Some "2,5" },
+                   pri, linear_regression_getter getter n) :: prev
                 else prev)
           | Expr expr ->
             let open Expr in

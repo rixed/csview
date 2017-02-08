@@ -41,6 +41,7 @@ module Pen = struct
     mutable stroke_width : float ;
     mutable filled : bool ;
     mutable fill_opacity : float ;
+    mutable dasharray : string option ;
     mutable draw_line : bool ;
     mutable draw_points : bool ;
     mutable label : string ;
@@ -52,6 +53,7 @@ module Pen = struct
       color_was_set = false ;
       opacity = 1. ;
       stroke_width = 1. ;
+      dasharray = None ;
       filled = false ;
       fill_opacity = 0.7 ;
       draw_line = true ;
@@ -215,11 +217,7 @@ module Expr = struct
   }
 end
 
-type linreg = {
-  data_source : data_source ;
-  mutable pen : Pen.t ;
-}
-and data_source =
+type data_source =
   | File of File.t
   | Expr of Expr.t
 
@@ -787,7 +785,7 @@ let string_of_timestamp ts =
 
 let rec load_field_config confdir file index =
   let args = params_of_field_config confdir file index in
-  parse_options [ field_options ] args
+  parse_options [ field_options ; pen_options ] args
 
 and field_options = [| {
   names = [| "x" |] ;
@@ -831,6 +829,32 @@ and field_options = [| {
     let file = get_current_file () in
     file.File.annot_fields <- append file.File.annot_fields (Field.make_new idx)
 } ; {
+  names = [| "format" |] ;
+  has_param = true ;
+  descr = "numeric|timestamp|date(...a la strptime...)" ;
+  doc = "" ;
+  setter = fun s ->
+    let len = String.length in
+    let f = get_current_field () in
+    f.Field.fmt <- List.find_map (fun (fmtname, f) ->
+      if s = fmtname then Some (f "") else
+      if String.starts_with s fmtname &&
+         s.[len fmtname] = '(' &&
+         s.[len s - 1] = ')' then
+        Some (f (String.sub s (len fmtname + 1)
+                              (len s - len fmtname - 2)))
+      else None) Formats.all ;
+    f.Field.fmt_was_set <- true
+} ; {
+  names = [| "linear-regression" ; "linear-reg" ; "lin-reg" ; "linreg" |] ;
+  has_param = false ;
+  descr = "display a linear regression for this field" ;
+  doc = "" ;
+  setter = fun s ->
+    (get_current_field ()).Field.linear_regression <- bool_of_string s
+} |]
+
+and pen_options = [| {
   names = [| "label" |] ;
   has_param = true ;
   descr = "label for this field" ;
@@ -888,29 +912,21 @@ and field_options = [| {
   setter = fun s ->
     (get_current_pen ()).Pen.draw_points <- bool_of_string s
 } ; {
-  names = [| "format" |] ;
-  has_param = true ;
-  descr = "numeric|timestamp|date(...a la strptime...)" ;
-  doc = "" ;
-  setter = fun s ->
-    let len = String.length in
-    let f = get_current_field () in
-    f.Field.fmt <- List.find_map (fun (fmtname, f) ->
-      if s = fmtname then Some (f "") else
-      if String.starts_with s fmtname &&
-         s.[len fmtname] = '(' &&
-         s.[len s - 1] = ')' then
-        Some (f (String.sub s (len fmtname + 1)
-                              (len s - len fmtname - 2)))
-      else None) Formats.all ;
-    f.Field.fmt_was_set <- true
-} ; {
-  names = [| "linear-regression" ; "linear-reg" ; "lin-reg" ; "linreg" |] ;
+  names = [| "dashed" |] ;
   has_param = false ;
-  descr = "display a linear regression for this field" ;
+  descr = "draw this field as a dashed line" ;
   doc = "" ;
   setter = fun s ->
-    (get_current_field ()).Field.linear_regression <- bool_of_string s
+    (get_current_pen ()).Pen.dasharray <- if bool_of_string s then Some "5,5" else None
+} ; {
+  names = [| "dash-array" ; "dash-pattern" ; "dasharray" ; "dashpattern" |] ;
+  has_param = true ;
+  descr = "draw this field as a dashed line, and set the dash pattern" ;
+  doc = "The dash pattern is a list of integers, giving the length of \
+         successive dashes and gaps (as in SVG attribute stroke-dasharray), \
+         for instance \"5,10,5\"." ;
+  setter = fun s ->
+    (get_current_pen ()).Pen.dasharray <- Some s
 } |]
 
 (* Other options are just for this run and not backed by any config file *)
@@ -959,7 +975,7 @@ let parse_args args =
   args.(0) <- None ;  (* This is not an option *)
   parse_options [ other_options ] args ;
   parse_options [ global_options ] args ;
-  parse_options [ graph_options ; file_options ; field_options ] args ;
+  parse_options [ graph_options ; file_options ; field_options ; pen_options ] args ;
   if !print_help then (
     List.iter (fun (section, opts) ->
       Printf.printf "%s\n\n" section ;
@@ -978,7 +994,8 @@ let parse_args args =
         "Global options", global_options ;
         "Graph options", graph_options ;
         "File options", file_options ;
-        "Field options", field_options ] ;
+        "Field options", field_options ;
+        "Pen options", pen_options ] ;
     exit 0
   ) ;
   Array.iter (function
