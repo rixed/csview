@@ -303,7 +303,6 @@ module Graph = struct
 end
 
 type global = {
-  mutable confdir : string ;
   mutable save_config : bool ;
   mutable open_browser_with : string ;
   mutable default_width : int ;
@@ -389,15 +388,6 @@ let params_of_graph_config confdir g =
     [| |]
 
 
-let save_global_config confdir global =
-  with_save_file confdir "global" (fun oc ->
-    Printf.fprintf oc "--open-browser-with\n%s\n\
-                       --default-width\n%d\n\
-                       --default-height\n%d\n"
-      global.open_browser_with
-      global.default_width
-      global.default_height)
-
 type cli_option = {
   names : string array ; (* First one will be the one in the ini file *)
   has_param : bool ;
@@ -406,12 +396,47 @@ type cli_option = {
   setter : string -> unit ;
 }
 
-let global = {
-  confdir =
-    (let homedir =
+(* Other options are just for this run and not backed by any config file *)
+
+let confdir =
+    let homedir =
       try Unix.getenv("HOME")
       with Not_found -> "/tmp" in
-    homedir ^"/.csview") ;
+    ref (homedir ^"/.csview")
+let open_browser = ref true
+let print_help = ref false
+let output_svg = ref false
+
+let other_options = [| {
+  names = [| "confdir" |] ;
+  has_param = true ;
+  descr = "directory where configuration files are stored" ;
+  doc = "Where to read and optionally write settings." ;
+  setter = (fun s -> confdir := s) ;
+} ; {
+  names = [| "open-browser" ; "open" |] ;
+  has_param = false ;
+  descr = "automatically launch the browser" ;
+  doc = "You may need to use the --opan-browser-with option to configure\
+         the details." ;
+  setter = fun v -> open_browser := bool_of_string v ;
+} ; {
+  names = [| "help" |] ;
+  has_param = false ;
+  descr = "print this help" ;
+  doc = "" ;
+  setter = fun v -> print_help := bool_of_string v ;
+} ; {
+  names = [| "output-svg" ; "svg-only" ; "svg" |] ;
+  has_param = false ;
+  descr = "dump the SVG and exit" ;
+  doc = "" ;
+  setter = fun s -> output_svg := bool_of_string s
+} |]
+
+
+
+let global = {
   save_config = false ;
   open_browser_with = CompilConfig.default_open ^" http://localhost:%port%" ;
   default_width = 800 ;
@@ -419,12 +444,6 @@ let global = {
 }
 
 let global_options = [| {
-  names = [| "confdir" |] ;
-  has_param = true ;
-  descr = "directory where configuration files are stored" ;
-  doc = "Where to read and optionally write settings." ;
-  setter = (fun s -> global.confdir <- s) ;
-} ; {
   names = [| "save-config" ; "save" |] ;
   has_param = false ;
   descr = "if set, save file/graph configuration" ;
@@ -436,7 +455,7 @@ let global_options = [| {
   has_param = true ;
   descr = "command to launch the browser" ;
   doc = "%port% will be replaced by the port csview is listening at." ;
-  setter = (fun s -> global.open_browser_with <- s) ;
+  setter = fun s -> global.open_browser_with <- s
 } ; {
   names = [| "svg-width" ; "width" |] ;
   has_param = true ;
@@ -522,7 +541,20 @@ let parse_options options args =
           loop (i + (if opt.has_param then 2 else 1))
         ) with Not_found -> loop (i + 1)
     ) in
-  loop 1
+  loop 0
+
+let save_global_config confdir global =
+  with_save_file confdir "global" (fun oc ->
+    Printf.fprintf oc "--open-browser-with\n%s\n\
+                       --default-width\n%d\n\
+                       --default-height\n%d\n"
+      global.open_browser_with
+      global.default_width
+      global.default_height)
+
+let load_global_config confdir =
+  let args = params_of_file confdir "global" in
+  parse_options [ global_options ] args
 
 let graphs = ref [| |]
 
@@ -574,7 +606,7 @@ and graph_options = [| {
     let renew g = g.Graph.title != default_title in
     let g = get_current_graph renew in
     g.Graph.title <- s ;
-    load_graph_config global.confdir g
+    load_graph_config !confdir g
 } ; {
   names = [| "y-label" ; "y1-label" |] ;
   has_param = true ;
@@ -721,7 +753,7 @@ and file_options = [| {
         Unix.close ic ;
         let f = File.make_new s in
         (* may not find anything if we use a confname ; we will try again later *)
-        load_file_config global.confdir f ;
+        load_file_config !confdir f ;
         if debug then Printf.eprintf "...was a file, added\n" ;
         File f
       with Unix.Unix_error (Unix.ENOENT, _, _) ->
@@ -764,7 +796,7 @@ and file_options = [| {
     let file = get_current_file () in
     file.File.confname <- s ;
     (* Try again to load the config (overwriting the cli params that have been set between file name and  --confname) *)
-    load_file_config global.confdir file
+    load_file_config !confdir file
 } |]
 
 (* We create a new field each time we set a value that was already set *)
@@ -803,7 +835,7 @@ and field_options = [| {
     if file.File.x_field <> None then
       raise (ParseError "Set twice the X field") ;
     file.File.x_field <- Some (Field.make_new idx) ;
-    load_field_config global.confdir file idx
+    load_field_config !confdir file idx
 } ; {
   names = [| "y" ; "y1" |] ;
   has_param = true ;
@@ -814,7 +846,7 @@ and field_options = [| {
     check_field_index idx ;
     let file = get_current_file () in
     file.File.y1_fields <- append file.File.y1_fields (Field.make_new idx) ;
-    load_field_config global.confdir file idx
+    load_field_config !confdir file idx
 } ; {
   names = [| "y2" |] ;
   has_param = true ;
@@ -825,7 +857,7 @@ and field_options = [| {
     check_field_index idx ;
     let file = get_current_file () in
     file.File.y2_fields <- append file.File.y2_fields (Field.make_new idx) ;
-    load_field_config global.confdir file idx
+    load_field_config !confdir file idx
 } ; {
   names = [| "annot" ; "y3" |] ;
   has_param = true ;
@@ -937,33 +969,6 @@ and pen_options = [| {
     (get_current_pen ()).Pen.dasharray <- Some s
 } |]
 
-(* Other options are just for this run and not backed by any config file *)
-
-let open_browser = ref true
-let print_help = ref false
-let output_svg = ref false
-
-let other_options = [| {
-  names = [| "open-browser" ; "open" |] ;
-  has_param = false ;
-  descr = "automatically launch the browser" ;
-  doc = "You may need to use the --opan-browser-with option to configure\
-         the details." ;
-  setter = fun v -> open_browser := bool_of_string v ;
-} ; {
-  names = [| "help" |] ;
-  has_param = false ;
-  descr = "print this help" ;
-  doc = "" ;
-  setter = fun v -> print_help := bool_of_string v ;
-} ; {
-  names = [| "output-svg" ; "svg-only" ; "svg" |] ;
-  has_param = false ;
-  descr = "dump the SVG and exit" ;
-  doc = "" ;
-  setter = fun s -> output_svg := bool_of_string s
-} |]
-
 (*
  * Command Line
  *)
@@ -979,9 +984,9 @@ let parse_args args =
    * insensitive to their position in the command line, and then the other
    * options which effect depend on position. *)
   (* So we can remove options that are processed already: *)
-  let args = Array.map Option.some args in
-  args.(0) <- None ;  (* This is not an option *)
+  let args = Array.init (Array.length args - 1) (fun i -> Some args.(i+1)) in
   parse_options [ other_options ] args ;
+  load_global_config !confdir ; (* need confdir from other_options *)
   parse_options [ global_options ] args ;
   parse_options [ graph_options ; file_options ; field_options ; pen_options ] args ;
   if !print_help then (
@@ -1074,9 +1079,8 @@ let parse_args args =
   (* Save configuration *)
   if global.save_config then (
     Printf.eprintf "Saving the configuration\n" ;
-    save_global_config global.confdir global ;
+    save_global_config !confdir global ;
     Array.iter (fun g ->
-      save_graph_config global.confdir g) !graphs
+      save_graph_config !confdir g) !graphs
   )
-
 
