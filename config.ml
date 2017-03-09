@@ -175,6 +175,7 @@ module File = struct
   let update_info f =
     if debug then Printf.eprintf "  Check file %s...\n" f.fname ;
     let x_field = Option.get f.x_field in
+    assert (x_field.Field.index >= 0) ;
     f.fd <- Unix.(openfile f.fname [O_RDONLY; O_CLOEXEC] 0o644) ;
     let sz = Read_csv.file_size f.fd in
     if sz <> f.size then (
@@ -783,6 +784,9 @@ let string_of_timestamp ts =
     (tm.tm_year + 1900) (tm.tm_mon + 1) tm.tm_mday
     tm.tm_hour tm.tm_min tm.tm_sec
 
+let check_field_index idx =
+  if idx < 0 then raise (ParseError "Field indexes starts at 1")
+
 let rec load_field_config confdir file index =
   let args = params_of_field_config confdir file index in
   parse_options [ field_options ; pen_options ] args
@@ -790,10 +794,11 @@ let rec load_field_config confdir file index =
 and field_options = [| {
   names = [| "x" |] ;
   has_param = true ;
-  descr = "field number (starting at 0) of the X value for this graph" ;
+  descr = "field number (starting at 1) of the X value for this graph" ;
   doc = "" ;
   setter = fun s ->
     let idx = int_of_string s - 1 in
+    check_field_index idx ;
     let file = get_current_file () in
     if file.File.x_field <> None then
       raise (ParseError "Set twice the X field") ;
@@ -806,6 +811,7 @@ and field_options = [| {
   doc = "" ;
   setter = fun s ->
     let idx = int_of_string s - 1 in
+    check_field_index idx ;
     let file = get_current_file () in
     file.File.y1_fields <- append file.File.y1_fields (Field.make_new idx) ;
     load_field_config global.confdir file idx
@@ -816,6 +822,7 @@ and field_options = [| {
   doc = "" ;
   setter = fun s ->
     let idx = int_of_string s - 1 in
+    check_field_index idx ;
     let file = get_current_file () in
     file.File.y2_fields <- append file.File.y2_fields (Field.make_new idx) ;
     load_field_config global.confdir file idx
@@ -826,6 +833,7 @@ and field_options = [| {
   doc = "" ;
   setter = fun s ->
     let idx = int_of_string s - 1 in
+    check_field_index idx ;
     let file = get_current_file () in
     file.File.annot_fields <- append file.File.annot_fields (Field.make_new idx)
 } ; {
