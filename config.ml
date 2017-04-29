@@ -13,18 +13,19 @@ let default_label = "label"
  * the configuration file(s). *)
 
 let mkdir_all ?(is_file=false) dir =
-    let dir_exist d =
-        try Sys.is_directory d with Sys_error _ -> false in
-    let dir = if is_file then Filename.dirname dir else dir in
-    let rec ensure_exist d =
-        if String.length d > 0 && not (dir_exist d) then (
-            ensure_exist (Filename.dirname d) ;
-            try Unix.mkdir d 0o755
-            with Unix.Unix_error (Unix.EEXIST, "mkdir", _) ->
-                (* Happen when we have "somepath//someother" (dirname should handle this IMHO *)
-                ()
-        ) in
-    ensure_exist dir
+  if debug then Printf.eprintf "mkdir -p %s\n" dir ;
+  let dir_exist d =
+    try Sys.is_directory d with Sys_error _ -> false in
+  let dir = if is_file then Filename.dirname dir else dir in
+  let rec ensure_exist d =
+    if String.length d > 0 && not (dir_exist d) then (
+      ensure_exist (Filename.dirname d) ;
+      try Unix.mkdir d 0o755
+      with Unix.Unix_error (Unix.EEXIST, "mkdir", _) ->
+        (* Happen when we have "somepath//someother" (dirname should handle this IMHO *)
+        ()
+    ) in
+  ensure_exist dir
 
 let with_save_file confdir name =
   mkdir_all confdir ;
@@ -553,8 +554,11 @@ let save_global_config confdir global =
       global.default_height)
 
 let load_global_config confdir =
-  let args = params_of_file confdir "global" in
-  parse_options [ global_options ] args
+  try params_of_file confdir "global" |>
+      parse_options [ global_options ]
+  with exn ->
+    Printf.eprintf "Cannot read global configuration from %s: %s\n"
+      confdir (Printexc.to_string exn)
 
 let graphs = ref [| |]
 
