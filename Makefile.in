@@ -38,6 +38,8 @@ clear:
 install: csview
 	strip csview
 	install -D csview $(DESTDIR)@prefix@/bin/csview
+	install -d $(DESTDIR)@DEFAULT_WWW_ROOT@/static
+	install -D static/csview.js static/style.css $(DESTDIR)@DEFAULT_WWW_ROOT@/static
 
 uninstall:
 	echo TODO

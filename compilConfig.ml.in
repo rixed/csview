@@ -1,2 +1,2 @@
 let default_open = "@DEFAULT_OPEN@"
-
+let default_www_root = "@DEFAULT_WWW_ROOT@"

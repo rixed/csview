@@ -22,5 +22,13 @@ elif test -x "$(which open)" ; then
 fi
 AC_SUBST([DEFAULT_OPEN])
 
+DEFAULT_WWW_ROOT="$datadir/csview"
+AC_ARG_WITH(
+  [www-root],
+  AS_HELP_STRING([--with-www-root], [where to store static files]),
+  [DEFAULT_WWW_ROOT="$withval"],
+  [DEFAULT_WWW_ROOT="/usr/local/share/csview"])
+AC_SUBST([DEFAULT_WWW_ROOT])
+
 AC_CONFIG_FILES([Makefile make.common compilConfig.ml])
 AC_OUTPUT

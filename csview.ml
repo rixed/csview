@@ -262,7 +262,8 @@ let on_all_http_msg oc msg =
     | "/graph.svg" ->
       get_graph oc params
     | "/favicon.ico" | "/csview.js" | "/style.css" ->
-      http_msg_of_file ("./static/"^ url.CodecUrl.path) |>
+      (* TODO: make www_root configurable *)
+      http_msg_of_file (CompilConfig.default_www_root ^"/static/"^ url.CodecUrl.path) |>
       respond oc
     | "/" | "/index.html" ->
       make_index_html params |>
