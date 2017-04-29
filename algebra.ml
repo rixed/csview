@@ -3,7 +3,8 @@
  * it as an algebraic expression (using parsercombinators lib) and build
  * a function from float to float. *)
 open Batteries
-module P = Parsers.Make (Parsers.SimpleConfig (Char))
+module PConfig = Parsers.SimpleConfig (Char)
+module P = Parsers.Make (PConfig)
 module U = ParsersUsual.Make (P)
 
 open P
@@ -70,18 +71,13 @@ let operation =
   left_assoc_low_prec
 
 (*$= operation & ~printer:(IO.to_string (P.print_result Float.print))
-  (Ok (2.,[])) (parse_with operation "1+1")
-  (Ok (2.,[])) (parse_with operation "1 +1")
-  (Ok (2.,[])) (parse_with operation "1+ 1")
-  (Ok (2.,[])) (parse_with operation "1 + 1")
-  (Ok (5.,[])) (parse_with operation "2.5 *  2")
-  (Ok (~-.39.,[])) (parse_with operation "1 - 2e1 * 2")
-  (Ok (4.,[])) (parse_with operation "(1.0 *2) ^ 2")
+  (Ok (2.,(3,[]))) (parse_with operation "1+1")
+  (Ok (2.,(4,[]))) (parse_with operation "1 +1")
+  (Ok (2.,(4,[]))) (parse_with operation "1+ 1")
+  (Ok (2.,(5,[]))) (parse_with operation "1 + 1")
+  (Ok (5.,(8,[]))) (parse_with operation "2.5 *  2")
+  (Ok (~-.39.,(11,[]))) (parse_with operation "1 - 2e1 * 2")
+  (Ok (4.,(12,[]))) (parse_with operation "(1.0 *2) ^ 2")
 *)
 
-let stream_of_string s =
-  let rec loop n tl =
-    if n < 0 then tl
-    else loop (n-1) ((n, s.[n]) :: tl) in
-  loop (String.length s - 1) []
-
+let stream_of_string = PConfig.stream_of_string

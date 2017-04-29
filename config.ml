@@ -763,7 +763,7 @@ and file_options = [| {
         let st = Algebra.stream_of_string s in
         let p = Algebra.operation +- eof in
         (match p [] None e st |> to_result with
-        | Ok (f, []) ->
+        | Ok (f, (_pos, [])) ->
           if debug then Printf.eprintf "...was an expression, added\n" ;
           Expr (Expr.make_new s f)
         | Ok _ -> assert false (* Cannot happen *)
