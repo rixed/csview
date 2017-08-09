@@ -342,12 +342,13 @@ let xy_plot ?(string_of_y=my_string_of_float)
   let y2 =
     Option.bind !label2 (fun label ->
       Some (string_of_label label, string_of_y2, vy_min.(1), vy_max.(1))) in
-  let grid = xy_grid ~stroke:"#000" ~stroke_width:2. ~font_size:axis_font_size
+  let grid = xy_grid ~stroke:"#000" ~stroke_width:2.
+                     ~font_size:axis_font_size
                      ~arrow_size:axis_arrow_h ~x_tick_spacing ~y_tick_spacing
-                    ~tick_length ~x_label ~y_label:y_label_grid
-                    ?string_of_x ~string_of_y ?y2 ?x_base ?y1_base ?y2_base
-                    (x_axis_xmin, x_axis_xmax) (y_axis_ymin, y_axis_ymax)
-                    (vx_min, vx_max) (vy_min.(0), vy_max.(0))
+                     ~tick_length ~x_label ~y_label:y_label_grid
+                     ?string_of_x ~string_of_y ?y2 ?x_base ?y1_base ?y2_base
+                     (x_axis_xmin, x_axis_xmax) (y_axis_ymin, y_axis_ymax)
+                     (vx_min, vx_max) (vy_min.(0), vy_max.(0))
   and paths = g (map_datasets path_of_dataset) 
   and legend =
     if draw_legend <> NoShow then (
