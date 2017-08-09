@@ -21,10 +21,10 @@ let with_timing n f =
 let () =
   Sys.(set_signal sigint (Signal_handle (fun _ -> exit 0))) ;
   at_exit (fun () ->
-    Hashtbl.iter (fun k (dt, n) ->
-        Printf.eprintf "Time spent %s: %fs (%fs x %d calls)\n"
-          k dt (dt /. (float_of_int n)) n
-      ) times)
+    if debug then Hashtbl.iter (fun k (dt, n) ->
+          Printf.eprintf "Time spent %s: %fs (%fs x %d calls)\n"
+            k dt (dt /. (float_of_int n)) n
+        ) times)
 
 
 (* We run in our own thread already thanks to [establish_server] so there
