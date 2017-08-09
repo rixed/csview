@@ -92,6 +92,7 @@ module Field = struct
   (* We create a new graph when we set again a field that has already been set.
    * But for stacked which cannot be compared by address. *)
   let make_new index =
+    assert (index >= 0) ; (* Internally we count from 0 *)
     let t = {
       index ;
       fmt = Formats.numeric "" ;
@@ -176,7 +177,7 @@ module File = struct
   let update_info f =
     if debug then Printf.eprintf "  Check file %s...\n" f.fname ;
     let x_field = Option.get f.x_field in
-    assert (x_field.Field.index >= 0) ;
+    assert (x_field.Field.index >= 0) ; (* Internally we count from 0 *)
     f.fd <- Unix.(openfile f.fname [O_RDONLY; O_CLOEXEC] 0o644) ;
     let sz = Read_csv.file_size f.fd in
     if sz <> f.size then (
@@ -729,22 +730,6 @@ and load_file_config confdir file =
   parse_options [ file_options ] args
 
 and file_options = [| {
-  names = [| "separator" |] ;
-  has_param = true ;
-  descr = "character to use as field separator" ;
-  doc = "" ;
-  setter = (fun s ->
-    if String.length s != 1 then
-      invalid_arg "separator must be a single character" ;
-    (get_current_file ()).File.separator <- s.[0]) ;
-} ; {
-  names = [| "has-header" ; "header" |] ;
-  has_param = false ;
-  descr = "Does the first line of the CSV has labels" ;
-  doc = "" ;
-  setter = fun s ->
-    (get_current_file ()).File.has_header <- bool_of_string s
-} ; {
   names = [| |] ;
   has_param = false ;
   descr = "CSV file or algebraic expression" ;
@@ -777,6 +762,22 @@ and file_options = [| {
     g.Graph.files <- append g.Graph.files f_or_e ;
     if debug then Printf.eprintf "Now have %d files\n"
       (Array.length g.Graph.files)
+} ; {
+  names = [| "separator" |] ;
+  has_param = true ;
+  descr = "character to use as field separator" ;
+  doc = "" ;
+  setter = (fun s ->
+    if String.length s != 1 then
+      invalid_arg "separator must be a single character" ;
+    (get_current_file ()).File.separator <- s.[0]) ;
+} ; {
+  names = [| "has-header" ; "header" |] ;
+  has_param = false ;
+  descr = "Does the first line of the CSV has labels" ;
+  doc = "" ;
+  setter = fun s ->
+    (get_current_file ()).File.has_header <- bool_of_string s
 } ; {
   names = [| "block-size" |] ;
   has_param = true ;
@@ -997,9 +998,13 @@ let parse_args args =
     List.iter (fun (section, opts) ->
       Printf.printf "%s\n\n" section ;
       Array.iter (fun o ->
-          Array.iteri (fun i n ->
-              Printf.printf "%s--%s" (if i > 0 then ", " else "") n
-            ) o.names ;
+          if Array.length o.names = 0 then (
+            Printf.printf "any word not preceded with an option name:"
+          ) else (
+            Array.iteri (fun i n ->
+                Printf.printf "%s--%s" (if i > 0 then ", " else "") n
+              ) o.names
+          ) ;
           Printf.printf "\n  %s\n" o.descr ;
           if o.doc <> "" then (
             Printf.printf "\n  %s\n" o.doc
