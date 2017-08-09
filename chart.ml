@@ -200,29 +200,38 @@ let xy_plot ?(string_of_y=my_string_of_float)
   let vx_of_bucket i = vx_min +. (float_of_int i +. 0.5) *. vx_step in
   (* TODO: if vx_min is close to 0 (compared to vx_max) then clamp it to 0 *)
   let vx_max = vx_of_bucket (nb_vx-1) in
-  (* Compute max Y for a given bucket (for primary and secondary Ys) *)
-  let max_vy = Array.init 2 (fun _ -> Array.create nb_vx 0.) in
+  (* Compute min/max Y for a given bucket (for primary and secondary Ys) *)
+  let max_vy = Array.init 2 (fun _ -> Array.create nb_vx ~-.max_float)
+  and min_vy = Array.init 2 (fun _ -> Array.create nb_vx max_float) in
   let label2 = ref None in
-  let set_max pi =
+  let set_min_max pi =
     if stacked.(pi) = NotStacked then
       (* keep the max of the Ys *)
-      (fun i c -> max_vy.(pi).(i) <- max max_vy.(pi).(i) c)
+      (fun i c ->
+        max_vy.(pi).(i) <- max max_vy.(pi).(i) c ;
+        min_vy.(pi).(i) <- min min_vy.(pi).(i) c)
     else
       (* sum the Ys *)
-      (fun i c -> max_vy.(pi).(i) <- max_vy.(pi).(i) +. c) in
+      (fun i c ->
+        max_vy.(pi).(i) <- max_vy.(pi).(i) +. c ;
+        min_vy.(pi).(i) <- min_vy.(pi).(i) +. c) in
   iter_datasets (fun pen prim get ->
     if not prim then label2 := Some pen.Pen.label ;
     let pi = if prim then 0 else 1 in
-    for i = 0 to nb_vx-1 do set_max pi i (get i |> rate_of_vy) done) ;
+    for i = 0 to nb_vx-1 do
+      let c = get i |> rate_of_vy in
+      set_min_max pi i c
+    done) ;
   (* TODO: if vy_min is close to 0 (compared to vy_max) then clamp it to 0 *)
   let vy_min = Array.create 2 max_float
-  and vy_max = Array.create 2 0. in
+  and vy_max = Array.create 2 ~-.max_float in
   for pi = 0 to 1 do
-    let ma, mi =
-      Array.fold_left (fun (ma, mi) y ->
-        max ma y, min mi y)
-        (0., max_float)
-        max_vy.(pi) in
+    let ma =
+      Array.fold_left (fun ma y -> max ma y)
+        ~-.max_float max_vy.(pi)
+    and mi =
+      Array.fold_left (fun mi y -> min mi y)
+        max_float min_vy.(pi) in
     vy_max.(pi) <- if force_show_0 then max ma 0. else ma ;
     vy_min.(pi) <- if force_show_0 then min mi 0. else mi ;
     if stacked.(pi) = StackedCentered then (
