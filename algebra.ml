@@ -11,7 +11,7 @@ open P
 open U
 
 let n = number >>: function
-  | Int i -> float_of_int i
+  | Int i -> Num.float_of_num i
   | Float f -> f
 let x = item ~what:"x" 'x'
 
