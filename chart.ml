@@ -190,12 +190,6 @@ let xy_plot ?(string_of_y=my_string_of_float)
   let iter_datasets f = fold.fold (fun _prev pen prim get -> f pen prim get) ()
   and map_datasets f = List.rev @@ fold.fold (fun prev pen prim get -> (f pen prim get) :: prev) []
   and rate_of_vy vy = if show_rate then vy /. vx_step else vy in
-  (* Graph geometry in pixels *)
-  let max_label_length = y_tick_spacing *. 0.9 in
-  let y_axis_x = margin_left +. max_label_length in
-  let x_axis_y = svg_height -. margin_bottom -. axis_font_size *. 1.2 in
-  let y_axis_ymin = x_axis_y and y_axis_ymax = margin_top
-  and x_axis_xmin = y_axis_x and x_axis_xmax = svg_width -. margin_right in
   (* Data bounds *)
   let vx_of_bucket i = vx_min +. (float_of_int i +. 0.5) *. vx_step in
   (* TODO: if vx_min is close to 0 (compared to vx_max) then clamp it to 0 *)
@@ -222,6 +216,13 @@ let xy_plot ?(string_of_y=my_string_of_float)
       let c = get i |> rate_of_vy in
       set_min_max pi i c
     done) ;
+  (* Graph geometry in pixels *)
+  let max_label_length = y_tick_spacing *. 0.9 in
+  let y_axis_x = margin_left +. max_label_length in
+  let y2_axis_x = svg_width -. margin_right -. (if !label2 = None then 0. else max_label_length) in
+  let x_axis_y = svg_height -. margin_bottom -. axis_font_size *. 1.2 in
+  let y_axis_ymin = x_axis_y and y_axis_ymax = margin_top
+  and x_axis_xmin = y_axis_x and x_axis_xmax = y2_axis_x in
   (* TODO: if vy_min is close to 0 (compared to vy_max) then clamp it to 0 *)
   let vy_min = Array.create 2 max_float
   and vy_max = Array.create 2 ~-.max_float in
