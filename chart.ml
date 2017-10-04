@@ -101,7 +101,7 @@ let axis ?(extend_ticks=0.) ?(stroke="#000") ?(stroke_width=1.)
                               else "text-anchor:end; dominant-baseline:central" in
             g (
               string_of_v v |>
-              String.nsplit ~by:"\n" |>
+              String.split_on_char '\n' |>
               List.map (fun s -> s, font_size) |>
               texts ?stroke_opacity:opacity ?fill_opacity:opacity ~style x y)
           ]) |>
@@ -195,8 +195,8 @@ let xy_plot ?(string_of_y=my_string_of_float)
   (* TODO: if vx_min is close to 0 (compared to vx_max) then clamp it to 0 *)
   let vx_max = vx_of_bucket (nb_vx-1) in
   (* Compute min/max Y for a given bucket (for primary and secondary Ys) *)
-  let max_vy = Array.init 2 (fun _ -> Array.create nb_vx ~-.max_float)
-  and min_vy = Array.init 2 (fun _ -> Array.create nb_vx max_float) in
+  let max_vy = Array.init 2 (fun _ -> Array.make nb_vx ~-.max_float)
+  and min_vy = Array.init 2 (fun _ -> Array.make nb_vx max_float) in
   let label2 = ref None in
   let set_min_max pi =
     if stacked.(pi) = NotStacked then
@@ -224,8 +224,8 @@ let xy_plot ?(string_of_y=my_string_of_float)
   let y_axis_ymin = x_axis_y and y_axis_ymax = margin_top
   and x_axis_xmin = y_axis_x and x_axis_xmax = y2_axis_x in
   (* TODO: if vy_min is close to 0 (compared to vy_max) then clamp it to 0 *)
-  let vy_min = Array.create 2 max_float
-  and vy_max = Array.create 2 ~-.max_float in
+  let vy_min = Array.make 2 max_float
+  and vy_max = Array.make 2 ~-.max_float in
   for pi = 0 to 1 do
     let ma =
       Array.fold_left (fun ma y -> max ma y)
@@ -247,7 +247,7 @@ let xy_plot ?(string_of_y=my_string_of_float)
       (* Start from -0.5 * tot_y for this bucket *)
       Array.init nb_vx (fun i -> ~-.0.5 *. max_vy.(0).(i))
     else
-      Array.create nb_vx 0. in
+      Array.make nb_vx 0. in
   (* per chart infos *)
   let tot_vy = Hashtbl.create 11
   and tot_vys = ref 0. in
@@ -341,8 +341,9 @@ let xy_plot ?(string_of_y=my_string_of_float)
     if prim then nb_y1+1, nb_y2, width, s::svg
             else nb_y1, nb_y2+1, width, s::svg in
   let y2 =
-    Option.bind !label2 (fun label ->
-      Some (string_of_label label, string_of_y2, vy_min.(1), vy_max.(1))) in
+    Option.map (fun label ->
+      string_of_label label, string_of_y2, vy_min.(1), vy_max.(1))
+      !label2 in
   let grid = xy_grid ~stroke:"#000" ~stroke_width:2.
                      ~font_size:axis_font_size
                      ~arrow_size:axis_arrow_h ~x_tick_spacing ~y_tick_spacing
