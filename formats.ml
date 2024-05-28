@@ -20,7 +20,7 @@ let numeric _ = {
   to_label = Html.my_string_of_float ;
 }
 
-(* TODO: reset this state after each axis... *)
+(* reset after each axis... *)
 let last_s = ref ""
 
 let label_of_timestamp t =

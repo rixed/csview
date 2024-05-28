@@ -166,6 +166,7 @@ type fold_t = {
      * is displayed with a distinct Y axis. *)
     fold : 'a. ('a -> Pen.t -> bool -> (int -> float) -> 'a) -> 'a -> 'a }
             (* I wonder what's the world record in argument list length? *)
+
 let xy_plot ?(string_of_y=my_string_of_float)
             ?(string_of_y2=my_string_of_float)
             ?string_of_x
@@ -367,4 +368,3 @@ let xy_plot ?(string_of_y=my_string_of_float)
     "xmlns:xlink", "http://www.w3.org/1999/xlink" ;
   ] in
   svg ~attrs [ grid ; paths ; legend ]
-

@@ -34,7 +34,8 @@ let with_save_file confdir name =
   let mode = [ `create; `trunc; `text ] in
   BatFile.with_file_out ~mode fname
 
-module Pen = struct
+module Pen =
+struct
   type t = {
     mutable color : Color.t ;
     mutable color_was_set : bool ;
@@ -79,7 +80,8 @@ module Pen = struct
                 pen.fill_opacity
 end
 
-module Field = struct
+module Field =
+struct
   type t = {
     mutable index : int ;
     mutable fmt : Formats.t ;
@@ -118,7 +120,8 @@ type bounds = {
   mutable last_x : float ;
 }
 
-module File = struct
+module File =
+struct
   type t = {
     fname : string ;
     mutable confname : string ;
@@ -198,7 +201,8 @@ module File = struct
 end
 
 (* instead of a file one can also enter an expression: *)
-module Expr = struct
+module Expr =
+struct
   type t = {
     expression : string ;
     funct : float -> float ;
@@ -224,7 +228,8 @@ type data_source =
   | File of File.t
   | Expr of Expr.t
 
-module Source = struct
+module Source =
+struct
   type t = data_source
 
   let bounds = function
@@ -233,6 +238,7 @@ module Source = struct
 end
 
 type stacked = NotStacked | Stacked | StackedCentered
+
 type legend_location = NoShow
                      | UpperLeft | UpperRight | BottomLeft | BottomRight
                      | Absolute of float * float
@@ -257,7 +263,8 @@ let legend_location_of_string str =
     with Scanf.Scan_failure _ ->
       raise (ParseError ("Cannot parse legend location '"^ str ^"'"))
 
-module Graph = struct
+module Graph =
+struct
   type t = {
     mutable title : string ;
     mutable files : data_source array ;
