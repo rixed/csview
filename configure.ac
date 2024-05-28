@@ -13,7 +13,7 @@ if test "$OCAMLFIND" = "no"; then
   AC_MSG_ERROR([You must install OCaml findlib (the ocamlfind command)])
 fi
 
-AC_CHECK_OCAML_PKG(batteries net_codecs parsercombinator owww)
+AC_CHECK_OCAML_PKG(batteries net_codecs parsercombinator)
 
 if test -x "$(which xdg-open)" ; then
   DEFAULT_OPEN="xdg-open"
