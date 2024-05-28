@@ -71,7 +71,7 @@ Parameters:
 
 The backend generates the SVG directly. Everything else but that SVG is static
 content (that's served from some files for easy customization). Therefore, we
-do not really need a lot of javascript, and js_of_ocaml might not even required.
+do not really need a lot of javascript, and js_of_ocaml might not even be required.
 Unless we add a lot of interactions with the graph, but so far we need:
 
 - scroll

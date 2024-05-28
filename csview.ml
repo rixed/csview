@@ -52,9 +52,7 @@ let kaputt oc str =
     body = str })
 
 let http_msg_of_html ?(content_type="text/html") html =
-  let body =
-    (IO.to_string (fun oc () -> Html.print_xml_head oc) ()) ^
-    (IO.to_string Html.print html) in
+  let body = Printf.sprintf2 "%t%a" Html.print_xml_head Html.print html in
   CodecHttp.(Msg.{
     start_line = StartLine.Response StatusLine.{
       version = 1, 1 ;
@@ -70,10 +68,7 @@ let http_msg_of_svg svg =
   http_msg_of_html ~content_type:"image/svg+xml" svg
 
 let read_whole_file fname =
-  let ic = open_in fname in
-  let str = IO.read_all ic in
-  close_in ic ;
-  str
+  File.with_file_in fname IO.read_all
 
 let content_type_of_file f =
   match String.rsplit f ~by:"." with
@@ -379,7 +374,7 @@ let start_server () =
       Printf.eprintf "Process %S killed by signal :(\n" cmd
   ) else (
     Printf.eprintf "Start HTTP server on port %d...\n%!" port ;
-    Unix.establish_server server_or_kaputt addr
+    Unix.establish_server ~cleanup:false server_or_kaputt addr
   )
 
 let () =
