@@ -44,11 +44,11 @@ let () =
       Printf.printf "Done writing %d msgs\n%!" i ;
       i
     ) else (
-      if write s str 0 len != len then failwith "Cannot write" ;
+      if write_substring s str 0 len != len then failwith "Cannot write" ;
       let open HttpParser in
       match p [] None Parsers.no_error_correction stream |> P.to_result with
       | Ok (_, stream') -> loop stream' (i+1)
-      | Bad some_err ->
+      | Error some_err ->
         Printf.eprintf "Cannot parse output: %a\n%!"
           (P.print_bad_result CodecHttp.Msg.print) some_err ;
         i

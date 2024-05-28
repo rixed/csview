@@ -293,7 +293,7 @@ let server ic' oc =
       with_timing "answering queries" (fun () ->
         on_all_http_msg oc msg) ;
       loop stream'
-    | Bad err -> on_all_err err in
+    | Error err -> on_all_err err in
   loop (make_stream ic)
 
 let server_or_kaputt ic oc =

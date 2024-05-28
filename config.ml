@@ -763,7 +763,7 @@ and file_options = [| {
           if debug then Printf.eprintf "...was an expression, added\n" ;
           Expr (Expr.make_new s f)
         | Ok _ -> assert false (* Cannot happen *)
-        | Bad _ -> raise Not_found)
+        | Error _ -> raise Not_found)
        | _ -> raise Not_found in
     let g = get_current_graph no_renew in
     g.Graph.files <- append g.Graph.files f_or_e ;
