@@ -196,8 +196,10 @@ let xy_plot ?(string_of_y=my_string_of_float)
   (* TODO: if vx_min is close to 0 (compared to vx_max) then clamp it to 0 *)
   let vx_max = vx_of_bucket (nb_vx-1) in
   (* Compute min/max Y for a given bucket (for primary and secondary Ys) *)
-  let max_vy = Array.init 2 (fun _ -> Array.make nb_vx ~-.max_float)
-  and min_vy = Array.init 2 (fun _ -> Array.make nb_vx max_float) in
+  let max_vy = Array.init 2 (fun pi ->
+    Array.make nb_vx (if stacked.(pi) = NotStacked then ~-.max_float else 0.))
+  and min_vy = Array.init 2 (fun pi ->
+    Array.make nb_vx (if stacked.(pi) = NotStacked then max_float else 0.)) in
   let label2 = ref None in
   let set_min_max pi =
     if stacked.(pi) = NotStacked then
@@ -288,7 +290,8 @@ let xy_plot ?(string_of_y=my_string_of_float)
             (* Bottom line (to close the area) (note: we loop here from last to first) *)
             for i = nb_vx-1 downto 0 do
               let vy' = prev_vy.(i) in
-              prev_vy.(i) <- vy' +. (get i |> rate_of_vy) ;
+              if is_stacked then
+                prev_vy.(i) <- vy' +. (get i |> rate_of_vy) ;
               Buffer.add_string buf
                 (lineto (get_x (vx_of_bucket i), get_y pi vy'))
             done ;
